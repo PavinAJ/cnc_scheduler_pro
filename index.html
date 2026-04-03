@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CNC Scheduler v7.0</title>
+<style>
+:root{
+--bg0:#0b0d12;--bg1:#11141c;--bg2:#171b27;--bg3:#1d2233;--bg4:#242a3c;
+--brd:#2a3048;--brd2:#363e58;
+--tx:#e4e7ef;--tx2:#8994b2;--tx3:#5c6584;
+--acc:#f59e0b;--acc2:#fbbf24;--acc-g:rgba(245,158,11,.12);
+--s-idle:#374151;--s-queue:#3b82f6;--s-run:#f59e0b;--s-done:#10b981;
+--s-delay:#ef4444;--s-pause:#8b5cf6;--s-setup:#06b6d4;
+--row-h:60px;--hdr-h:40px;--side-w:220px;
+--r:5px;--r2:8px;
+--mono:'Cascadia Code','JetBrains Mono','Fira Code','Consolas',monospace;
+--sans:'Segoe UI',system-ui,-apple-system,sans-serif;
+--fast:120ms ease;
+--var-over:#ef4444;--var-under:#10b981;--var-exact:#8994b2;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{font-size:13px}
+body{font-family:var(--sans);background:var(--bg0);color:var(--tx);overflow:hidden;height:100vh}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg1)}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:3px}
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;height:46px;padding:0 14px;background:var(--bg1);border-bottom:1px solid var(--brd);flex-shrink:0;z-index:100;gap:8px}
+.topbar-logo{font-family:var(--mono);font-weight:800;font-size:12px;color:var(--acc);letter-spacing:1.5px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.topbar-logo .dot{width:7px;height:7px;border-radius:50%;background:var(--s-done);box-shadow:0 0 6px var(--s-done);animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.proj-switch{position:relative}
+.proj-btn{font-size:11px;color:var(--tx2);padding:4px 10px;background:var(--bg2);border-radius:var(--r);border:1px solid var(--brd);cursor:pointer;display:flex;align-items:center;gap:6px;max-width:240px;transition:all var(--fast)}.proj-btn:hover{border-color:var(--brd2);color:var(--tx)}
+.proj-dd{display:none;position:absolute;top:100%;left:0;margin-top:4px;background:var(--bg4);border:1px solid var(--brd2);border-radius:var(--r2);min-width:300px;max-height:400px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:200}.proj-dd.open{display:block}
+.proj-dd-hdr{padding:10px 14px;border-bottom:1px solid var(--brd);font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;align-items:center}
+.proj-dd-item{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background var(--fast);border-bottom:1px solid var(--brd)}.proj-dd-item:last-child{border-bottom:none}.proj-dd-item:hover{background:var(--bg2)}.proj-dd-item.active{background:var(--acc-g);border-left:3px solid var(--acc)}
+.proj-dd-item .pname{font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-dd-item .pmeta{font-size:9px;color:var(--tx3);font-family:var(--mono)}
+.proj-dd-item .pacts{display:flex;gap:3px;opacity:0;transition:opacity var(--fast)}.proj-dd-item:hover .pacts{opacity:1}
+.proj-dd-item .pact{cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px}.proj-dd-item .pact:hover{background:var(--bg4)}.proj-dd-item .pact.del{color:var(--s-delay)}.proj-dd-item .pact.del:hover{background:rgba(239,68,68,.15)}
+.topbar-auto{font-size:9px;color:var(--tx3);font-family:var(--mono);display:flex;align-items:center;gap:3px}.topbar-auto .ok{color:var(--s-done)}
+.topbar-right{display:flex;align-items:center;gap:5px;margin-left:auto}
+.topbar-time{font-family:var(--mono);font-size:10px;color:var(--tx3)}
+.btn{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--tx2);font-size:11px;font-weight:600;font-family:var(--sans);cursor:pointer;transition:all var(--fast);white-space:nowrap;user-select:none}.btn:hover{background:var(--bg4);color:var(--tx);border-color:var(--brd2)}.btn:active{transform:scale(.97)}
+.btn-a{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}.btn-a:hover{background:var(--acc2);border-color:var(--acc2);color:#000}
+.btn-d{border-color:#dc2626;color:#ef4444}.btn-d:hover{background:#dc262618}
+.btn-g{border-color:var(--s-done);color:var(--s-done)}.btn-g:hover{background:rgba(16,185,129,.1)}
+.btn-t{border-color:var(--s-setup);color:var(--s-setup)}.btn-t:hover{background:rgba(6,182,212,.1)}
+.tabs{display:flex;gap:1px;padding:0 14px;background:var(--bg1);border-bottom:1px solid var(--brd);flex-shrink:0;overflow-x:auto}
+.tab{padding:8px 16px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;border-bottom:2px solid transparent;transition:color var(--fast);display:flex;align-items:center;gap:5px;user-select:none;white-space:nowrap}.tab:hover{color:var(--tx2)}.tab.active{color:var(--acc);border-bottom-color:var(--acc)}
+.tab .b{font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:8px;background:var(--bg4);color:var(--tx3)}.tab.active .b{background:var(--acc-g);color:var(--acc)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.pnl{display:none;flex:1;overflow:hidden;flex-direction:column}.pnl.active{display:flex}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;padding:12px 14px;flex-shrink:0}
+.kpi{background:var(--bg3);border:1px solid var(--brd);border-radius:var(--r2);padding:12px 14px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--acc)}
+.kpi[data-c="g"]::before{background:var(--s-done)}.kpi[data-c="b"]::before{background:var(--s-queue)}.kpi[data-c="r"]::before{background:var(--s-delay)}.kpi[data-c="c"]::before{background:var(--s-setup)}.kpi[data-c="p"]::before{background:var(--s-pause)}
+.kpi-l{font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.kpi-v{font-family:var(--mono);font-size:22px;font-weight:800;line-height:1}
+.kpi-s{font-size:9px;color:var(--tx2);margin-top:3px;font-family:var(--mono)}
+.dash{flex:1;overflow-y:auto;padding:0 14px 14px}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcard{background:var(--bg3);border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden}
+.dcard-h{padding:9px 14px;border-bottom:1px solid var(--brd);font-weight:700;font-size:11px;background:var(--bg2);display:flex;align-items:center;gap:6px}
+.dcard-b{padding:10px 14px;max-height:280px;overflow-y:auto}
+.mu-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:11px}.mu-row:last-child{border-bottom:none}
+.mu-name{width:100px;font-family:var(--mono);font-weight:600;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.mu-bar{flex:1;height:14px;background:var(--bg0);border-radius:2px;overflow:hidden}
+.mu-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.mu-fill.run{background:linear-gradient(90deg,var(--s-run),var(--acc2))}.mu-fill.idle{background:var(--s-idle)}.mu-fill.done{background:var(--s-done)}
+.mu-pct{width:34px;text-align:right;font-family:var(--mono);font-weight:700;font-size:9px;color:var(--tx3)}
+.rj-row{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:11px}.rj-row:last-child{border-bottom:none}
+.sd{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sd.queued{background:var(--s-queue)}.sd.running{background:var(--s-run);box-shadow:0 0 4px var(--s-run)}.sd.complete{background:var(--s-done)}.sd.delayed{background:var(--s-delay)}.sd.paused{background:var(--s-pause)}.sd.setup{background:var(--s-setup)}
+.sb{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.sb.queued{background:#3b82f618;color:var(--s-queue)}.sb.running{background:#f59e0b18;color:var(--s-run)}.sb.complete{background:#10b98118;color:var(--s-done)}.sb.delayed{background:#ef444418;color:var(--s-delay)}.sb.paused{background:#8b5cf618;color:var(--s-pause)}.sb.setup{background:#06b6d418;color:var(--s-setup)}
+/* Variance badges */
+.var-badge{font-family:var(--mono);font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px}
+.var-badge.over{background:rgba(239,68,68,.15);color:var(--var-over)}
+.var-badge.under{background:rgba(16,185,129,.15);color:var(--var-under)}
+.var-badge.exact{background:rgba(137,148,178,.1);color:var(--var-exact)}
+/* Gantt */
+.g-toolbar{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--bg1);border-bottom:1px solid var(--brd);flex-shrink:0;flex-wrap:wrap}
+.g-sep{width:1px;height:18px;background:var(--brd)}.g-zlbl{font-size:9px;color:var(--tx3);font-family:var(--mono)}
+.g-wrap{flex:1;display:flex;overflow:hidden;position:relative}
+.g-side{width:var(--side-w);flex-shrink:0;background:var(--bg1);border-right:1px solid var(--brd);display:flex;flex-direction:column;z-index:10}
+.g-side-h{height:var(--hdr-h);padding:0 10px;display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--brd);font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px}
+.g-side-b{flex:1;overflow-y:hidden}
+.g-mrow{height:var(--row-h);padding:0 10px;display:flex;align-items:center;border-bottom:1px solid var(--brd);cursor:pointer;transition:background var(--fast)}.g-mrow:hover{background:var(--bg2)}.g-mrow.unassigned{font-style:italic;opacity:.7}
+.g-mind{width:5px;height:5px;border-radius:50%;margin-right:7px;flex-shrink:0}
+.g-mlbl{font-size:10px;font-weight:600;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.g-tl{flex:1;overflow:auto;position:relative}
+.g-thdr{position:sticky;top:0;z-index:5;height:var(--hdr-h);background:var(--bg2);border-bottom:1px solid var(--brd);display:flex;align-items:flex-end}
+.g-tc{flex-shrink:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;border-right:1px solid var(--brd);padding:2px 5px}
+.g-tc.we{background:rgba(255,255,255,.015)}.g-tc.today{background:var(--acc-g);border-bottom:2px solid var(--acc)}
+.g-td{font-size:9px;font-weight:700;color:var(--tx);font-family:var(--mono)}.g-tdt{font-size:7px;color:var(--tx3);font-family:var(--mono)}
+.g-body{position:relative}
+.g-row{height:var(--row-h);position:relative;border-bottom:1px solid var(--brd)}.g-row:hover{background:rgba(255,255,255,.012)}
+.g-now{position:absolute;top:0;bottom:0;width:2px;background:var(--acc);z-index:4;pointer-events:none;opacity:.6}
+.g-job{position:absolute;top:3px;height:calc(var(--row-h) - 6px);border-radius:4px;cursor:grab;display:flex;flex-direction:column;justify-content:space-between;padding:3px 6px 0;overflow:hidden;font-size:9px;font-weight:600;color:#000;z-index:3;transition:box-shadow var(--fast);border:1px solid transparent;min-width:14px;user-select:none}
+.g-job:hover{z-index:6;box-shadow:0 3px 12px rgba(0,0,0,.4);transform:translateY(-1px)}.g-job.dragging{opacity:.8;cursor:grabbing;box-shadow:0 6px 20px rgba(0,0,0,.5);z-index:20}
+.g-job.queued{background:var(--s-queue);color:#fff}.g-job.running{background:var(--s-run);border-color:#d97706}.g-job.complete{background:var(--s-done);color:#fff}.g-job.delayed{background:var(--s-delay);color:#fff}.g-job.paused{background:var(--s-pause);color:#fff}.g-job.setup{background:var(--s-setup);color:#fff}
+/* Job block content */
+.g-job-top{display:flex;align-items:center;gap:3px;min-height:0;overflow:hidden}
+.g-job-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-family:var(--mono);font-size:8px;line-height:1.3}
+.g-job-hrs{font-family:var(--mono);font-size:7px;opacity:.8;white-space:nowrap;flex-shrink:0}
+/* Dual-track meter at bottom of job block */
+.g-meter{width:100%;height:12px;display:flex;flex-direction:column;gap:1px;margin-bottom:2px;flex-shrink:0}
+.g-meter-track{height:5px;background:rgba(0,0,0,.15);border-radius:2px;overflow:visible;position:relative}
+.g-meter-fill{height:100%;border-radius:2px;transition:width .3s ease;min-width:0}
+/* Progress track (top) — white transparent */
+.g-meter-fill.pg{background:rgba(255,255,255,.45)}
+/* Actual/Est ratio track (bottom) — color coded */
+.g-meter-fill.act-ok{background:rgba(255,255,255,.6)}
+.g-meter-fill.act-warn{background:#fbbf24}
+.g-meter-fill.act-over{background:#ef4444;box-shadow:0 0 4px rgba(239,68,68,.4)}
+/* Compact est/act label between tracks */
+.g-meter-lbl{font-family:var(--mono);font-size:6px;line-height:1;opacity:.85;display:flex;justify-content:space-between;white-space:nowrap;overflow:hidden}
+/* Conflict: pulsing red border */
+.g-job.conflict{border:2px solid var(--s-delay)!important;box-shadow:0 0 8px rgba(239,68,68,.3);animation:conflict-pulse 1.5s ease infinite}
+@keyframes conflict-pulse{0%,100%{box-shadow:0 0 4px rgba(239,68,68,.2)}50%{box-shadow:0 0 12px rgba(239,68,68,.5)}}
+/* Estimated ghost outline — shows where planned end was on completed jobs */
+.g-est-ghost{position:absolute;top:3px;height:calc(var(--row-h) - 6px);border:1.5px dashed rgba(255,255,255,.2);border-radius:4px;pointer-events:none;z-index:2}
+.g-est-ghost-lbl{position:absolute;top:-1px;right:2px;font-family:var(--mono);font-size:6px;color:rgba(255,255,255,.35);pointer-events:none}
+/* Completed jobs — slightly different look */
+.g-job.complete{background:var(--s-done);color:#fff;border:1px solid rgba(16,185,129,.5)}
+.g-job.complete .g-job-t{opacity:.95}
+/* Mark complete bar in log modal */
+.log-complete-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;margin:10px 0;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r2)}
+.log-complete-bar label{font-size:9px;color:var(--tx3);font-weight:700;text-transform:uppercase;white-space:nowrap}
+.log-complete-bar input[type=range]{flex:1}
+.log-complete-bar .pg-val{font-family:var(--mono);font-size:12px;font-weight:700;min-width:36px;text-align:right;color:var(--acc)}
+/* Machine load bar in sidebar */
+.g-mload{height:3px;width:calc(100% - 20px);margin:2px 10px 0;background:var(--bg0);border-radius:2px;overflow:hidden}
+.g-mload-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.g-mload-fill.lo{background:var(--s-done)}.g-mload-fill.med{background:var(--s-run)}.g-mload-fill.hi{background:var(--s-delay)}
+.g-job-proj{position:absolute;top:0;left:0;right:0;height:3px;border-radius:4px 4px 0 0;opacity:.8}
+.g-job.other-proj{opacity:.65;border-style:dashed}
+.g-job.other-proj:hover{opacity:.85}
+.g-job .rh{position:absolute;top:0;width:6px;height:100%;cursor:ew-resize;z-index:5}.g-job .rh.l{left:0}.g-job .rh.r{right:0}
+.jt-bar{display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg1);border-bottom:1px solid var(--brd);flex-shrink:0;flex-wrap:wrap}
+.jt-bar input,.jt-bar select{background:var(--bg2);border:1px solid var(--brd);color:var(--tx);padding:5px 9px;border-radius:var(--r);font-size:11px;font-family:var(--sans)}
+.jt-bar input:focus,.jt-bar select:focus{outline:none;border-color:var(--acc)}
+.jt-wrap{flex:1;overflow:auto}
+table.jt{width:100%;border-collapse:collapse;font-size:11px}
+table.jt th{position:sticky;top:0;z-index:2;background:var(--bg2);padding:7px 10px;text-align:left;font-weight:700;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--brd);cursor:pointer;user-select:none;white-space:nowrap}
+table.jt th:hover{color:var(--tx2)}
+table.jt td{padding:7px 10px;border-bottom:1px solid var(--brd);color:var(--tx2);vertical-align:middle}
+table.jt tr:hover td{background:var(--bg2)}
+table.jt td:first-child{font-family:var(--mono);font-weight:600;color:var(--tx)}
+.pr{font-family:var(--mono);font-size:9px;font-weight:700}.pr.high{color:var(--s-delay)}.pr.medium{color:var(--s-run)}.pr.low{color:var(--tx3)}
+.mc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;padding:14px}
+.mc{background:var(--bg3);border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden;transition:border-color var(--fast)}.mc:hover{border-color:var(--brd2)}
+.mc-h{padding:10px 14px;display:flex;align-items:center;gap:7px;background:var(--bg2);border-bottom:1px solid var(--brd)}
+.mc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}.mc-dot.online{background:var(--s-done);box-shadow:0 0 5px var(--s-done)}.mc-dot.offline{background:var(--s-idle)}.mc-dot.maintenance{background:var(--s-delay);animation:pulse 1.5s ease infinite}
+.mc-name{font-weight:700;font-size:12px;flex:1}.mc-b{padding:10px 14px}
+.mc-s{display:flex;justify-content:space-between;padding:4px 0;font-size:10px;border-bottom:1px solid var(--brd)}.mc-s:last-child{border-bottom:none}.mc-s .l{color:var(--tx3)}.mc-s .v{font-family:var(--mono);font-weight:600}
+.log-entry{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd);font-size:11px}.log-entry:last-child{border-bottom:none}
+.log-type{padding:2px 8px;border-radius:10px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;flex-shrink:0}
+.log-type.maintenance{background:#f59e0b18;color:var(--s-run)}.log-type.breakdown{background:#ef444418;color:var(--s-delay)}.log-type.status_change{background:#3b82f618;color:var(--s-queue)}.log-type.note{background:#8b5cf618;color:var(--s-pause)}.log-type.job_done{background:#10b98118;color:var(--s-done)}.log-type.setup_change{background:#06b6d418;color:var(--s-setup)}.log-type.time_log{background:#f59e0b18;color:var(--acc)}
+.log-body{flex:1}.log-desc{color:var(--tx);font-weight:500}.log-meta{font-size:9px;color:var(--tx3);font-family:var(--mono);margin-top:2px}
+/* Time entries in edit modal */
+.te-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--brd);font-size:10px}
+.te-row:last-child{border-bottom:none}
+.te-hrs{font-family:var(--mono);font-weight:700;font-size:12px;min-width:42px;color:var(--acc)}
+.te-del{cursor:pointer;color:var(--tx3);font-size:12px;opacity:0;transition:opacity var(--fast)}.te-row:hover .te-del{opacity:1}.te-del:hover{color:var(--s-delay)}
+/* Modal/toast/tooltip/ctx/empty */
+.mo{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);justify-content:center;align-items:center}.mo.open{display:flex}
+.md{background:var(--bg3);border:1px solid var(--brd);border-radius:var(--r2);width:580px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:md-in .2s ease}
+@keyframes md-in{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
+.md-h{padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--brd);background:var(--bg2);position:sticky;top:0;z-index:1}
+.md-t{font-weight:700;font-size:14px}.md-x{width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--r);color:var(--tx3);background:none;border:none;font-size:15px}.md-x:hover{background:var(--bg4);color:var(--tx)}
+.md-b{padding:18px}.md-f{padding:12px 18px;border-top:1px solid var(--brd);display:flex;justify-content:flex-end;gap:8px;background:var(--bg2)}
+.fg{margin-bottom:12px}.fg label{display:block;font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.fg input,.fg select,.fg textarea{width:100%;background:var(--bg2);border:1px solid var(--brd);color:var(--tx);padding:7px 10px;border-radius:var(--r);font-size:12px;font-family:var(--sans);transition:border-color var(--fast)}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-g)}
+.fg textarea{resize:vertical;min-height:44px}.fr{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}.fg .hint{font-size:8px;color:var(--tx3);margin-top:2px}
+.ts{position:fixed;top:52px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:2000}
+.t{background:var(--bg4);border:1px solid var(--brd);border-radius:var(--r);padding:8px 12px;min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;gap:7px;font-size:11px;animation:t-in .25s ease}
+@keyframes t-in{from{transform:translateX(100%);opacity:0}to{transform:none;opacity:1}}.t.h{animation:t-out .25s ease forwards}@keyframes t-out{to{transform:translateX(100%);opacity:0}}
+.t.success{border-left:3px solid var(--s-done)}.t.error{border-left:3px solid var(--s-delay)}.t.warning{border-left:3px solid var(--s-run)}.t.info{border-left:3px solid var(--s-queue)}
+.tt{position:fixed;z-index:1000;background:var(--bg4);border:1px solid var(--brd2);border-radius:var(--r);padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.4);pointer-events:none;font-size:10px;max-width:260px;display:none}.tt.show{display:block}
+.tt-t{font-weight:700;margin-bottom:4px;font-size:11px}.tt-r{display:flex;justify-content:space-between;gap:8px;padding:1px 0}.tt-l{color:var(--tx3)}.tt-v{font-family:var(--mono);font-weight:600}
+.cm{position:fixed;z-index:500;background:var(--bg4);border:1px solid var(--brd2);border-radius:var(--r);padding:3px 0;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:140px;display:none}.cm.open{display:block}
+.cm-i{padding:6px 12px;font-size:10px;color:var(--tx2);cursor:pointer;display:flex;align-items:center;gap:6px;transition:background var(--fast)}.cm-i:hover{background:var(--bg2);color:var(--tx)}.cm-i.d{color:var(--s-delay)}.cm-d{height:1px;background:var(--brd);margin:2px 0}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;color:var(--tx3);text-align:center;flex:1}.empty-i{font-size:36px;margin-bottom:10px;opacity:.4}.empty-t{font-size:15px;font-weight:700;color:var(--tx2);margin-bottom:5px}.empty-d{font-size:11px;max-width:340px;line-height:1.5;margin-bottom:14px}
+.print-view{display:none}
+@media print{body{background:#fff;color:#000;overflow:visible;height:auto}.app{display:none!important}.print-view{display:block!important;padding:16px;font-family:var(--sans);font-size:9pt}.print-view h1{font-size:14pt;margin-bottom:3px}.print-view h2{font-size:11pt;margin:12px 0 5px;color:#333;border-bottom:1px solid #ccc;padding-bottom:2px}.print-view table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:8pt}.print-view th,.print-view td{border:1px solid #ccc;padding:3px 6px;text-align:left}.print-view th{background:#f0f0f0;font-weight:700}.print-view .over{color:#c0392b;font-weight:700}.print-view .under{color:#27ae60;font-weight:700}.print-view .foot{margin-top:20px;text-align:center;font-size:7pt;color:#666;border-top:1px solid #ccc;padding-top:6px}}
+@media(max-width:768px){.topbar{flex-wrap:wrap;height:auto;padding:6px 10px}.g-wrap{flex-direction:column}.g-side{width:100%;border-right:none;border-bottom:1px solid var(--brd);max-height:100px}.dash-grid{grid-template-columns:1fr}.fr,.fr3{grid-template-columns:1fr}.topbar-right{flex-wrap:wrap}.btn-grp{flex-wrap:wrap}}
+/* Progress bar in table */
+.pg-bar{width:48px;height:6px;background:var(--bg0);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:4px}
+.pg-fill{height:100%;border-radius:3px;transition:width .3s ease;background:var(--s-queue)}
+.pg-fill.mid{background:var(--s-run)}.pg-fill.hi{background:var(--s-done)}
+/* Sort arrows */
+table.jt th .sa{font-size:7px;margin-left:2px;opacity:.4;vertical-align:middle}
+table.jt th.sorted .sa{opacity:1;color:var(--acc)}
+/* Quick status dropdown */
+.sb.clickable{cursor:pointer;transition:all var(--fast)}.sb.clickable:hover{filter:brightness(1.3);transform:scale(1.08)}
+/* Button groups */
+.btn-grp{display:flex;gap:2px;padding:2px;background:var(--bg0);border-radius:calc(var(--r) + 2px);border:1px solid var(--brd)}
+.btn-grp .btn{border:none;border-radius:var(--r);padding:4px 8px;font-size:10px;background:transparent}.btn-grp .btn:hover{background:var(--bg3)}
+/* Validation */
+.fg input:invalid:not(:placeholder-shown),.fg input.err{border-color:var(--s-delay)!important;box-shadow:0 0 0 2px rgba(239,68,68,.15)!important}
+.fg .err-msg{color:var(--s-delay);font-size:8px;margin-top:2px;display:none}.fg .err-msg.show{display:block}
+/* Better tabs for touch */
+.tab{min-height:40px;padding:10px 18px}
+/* Datalist styling */
+.fg input[list]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235c6584'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:24px}
+/* Keyboard shortcut hints */
+.kbd{font-family:var(--mono);font-size:7px;padding:1px 4px;background:var(--bg0);border:1px solid var(--brd);border-radius:2px;color:var(--tx3);vertical-align:middle;margin-left:3px}
+/* Net hours badge */
+.net-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--bg4);border-radius:var(--r);font-family:var(--mono);font-size:10px;color:var(--acc);border:1px solid var(--brd)}
+/* Inline quick-edit popup on Gantt */
+.qe-popup{position:fixed;z-index:900;background:var(--bg3);border:1px solid var(--acc);border-radius:var(--r2);box-shadow:0 8px 32px rgba(0,0,0,.6);padding:12px;min-width:260px;max-width:320px;display:none;animation:md-in .15s ease}
+.qe-popup.show{display:block}
+.qe-popup .qe-title{font-weight:700;font-size:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.qe-popup .qe-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px}
+.qe-popup .qe-row label{font-size:9px;color:var(--tx3);font-weight:700;text-transform:uppercase;min-width:50px}
+.qe-popup select,.qe-popup input{background:var(--bg2);border:1px solid var(--brd);color:var(--tx);padding:5px 8px;border-radius:var(--r);font-size:11px;flex:1}
+.qe-popup .qe-acts{display:flex;gap:4px;margin-top:4px}
+/* Drag ghost preview */
+.drag-ghost{position:fixed;z-index:1200;background:var(--acc);color:#000;font-family:var(--mono);font-size:10px;font-weight:700;padding:4px 10px;border-radius:var(--r);pointer-events:none;opacity:.9;box-shadow:0 4px 16px rgba(0,0,0,.4);display:none;white-space:nowrap}
+/* Capacity heatmap */
+.hm-grid{display:grid;grid-template-columns:100px repeat(7,1fr);gap:1px;font-size:9px}
+.hm-cell{padding:4px;text-align:center;border-radius:2px;font-family:var(--mono);font-weight:600;font-size:8px;min-height:22px;display:flex;align-items:center;justify-content:center}
+.hm-hdr{color:var(--tx3);font-weight:700;font-size:8px;text-transform:uppercase}
+.hm-name{color:var(--tx2);font-weight:600;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
+.hm-0{background:var(--bg2);color:var(--tx3)}.hm-1{background:#10b98118;color:var(--s-done)}.hm-2{background:#f59e0b18;color:var(--s-run)}.hm-3{background:#ef444418;color:var(--s-delay)}
+/* Capacity heatmap */
+.cap-grid{display:grid;grid-template-columns:auto repeat(7,1fr);gap:2px;font-size:8px;font-family:var(--mono)}
+.cap-cell{padding:4px 3px;border-radius:2px;text-align:center;font-weight:700;min-width:28px}
+.cap-cell.hdr{color:var(--tx3);background:none;font-weight:600}
+.cap-cell.mname{color:var(--tx2);text-align:right;padding-right:6px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px}
+.cap-cell.lo{background:rgba(16,185,129,.15);color:var(--s-done)}
+.cap-cell.med{background:rgba(245,158,11,.2);color:var(--s-run)}
+.cap-cell.hi{background:rgba(239,68,68,.2);color:var(--s-delay)}
+.cap-cell.off{background:var(--bg0);color:var(--tx3);opacity:.4}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="topbar">
+<div class="topbar-logo"><div class="dot"></div>CNC SCHED</div>
+<div class="proj-switch" id="projSwitch"><div class="proj-btn" id="projBtn" onclick="toggleProjDD()"><span id="projBtnName">—</span><span class="arrow">▾</span></div><div class="proj-dd" id="projDD"></div></div>
+<div class="topbar-auto"><span class="ok">●</span><span id="tpAS">Ready</span></div>
+<div class="topbar-right">
+<div class="topbar-time" id="tpTime"></div>
+<div class="net-badge" id="tpNet" title="Net productive machine hours per day">—h/day</div>
+<div class="btn-grp" title="Data"><button class="btn" onclick="openSettingsModal()" title="Project settings">⚙</button><button class="btn" onclick="importProject()" title="Import JSON">📂</button><button class="btn" onclick="exportProject()" title="Export project">💾</button><button class="btn" onclick="exportAllBackup()" title="Full backup">🗄</button></div>
+<div class="btn-grp" title="Reports"><button class="btn" onclick="exportCSV()" title="Export CSV spreadsheet">CSV</button><button class="btn" onclick="printReport()" title="Print report">🖨</button></div>
+<button class="btn btn-a" onclick="openNewJobModal()" title="Create new job (Ctrl+N)">＋ Job</button>
+</div>
+</div>
+<div class="tabs">
+<div class="tab active" data-tab="dashboard" onclick="swTab('dashboard')">◈ Dashboard</div>
+<div class="tab" data-tab="gantt" onclick="swTab('gantt')">▧ Timeline <span class="b" id="bG">0</span></div>
+<div class="tab" data-tab="jobs" onclick="swTab('jobs')">☰ Jobs <span class="b" id="bJ">0</span></div>
+<div class="tab" data-tab="machines" onclick="swTab('machines')">⚙ Machines <span class="b" id="bM">0</span></div>
+<div class="tab" data-tab="log" onclick="swTab('log')">📋 Log <span class="b" id="bL">0</span></div>
+</div>
+<!-- Datalists for auto-suggestions -->
+<datalist id="dlMat"><option value="Al6061"><option value="Al7075"><option value="Al2024"><option value="SS316L"><option value="SS304"><option value="Inconel 718"><option value="Titanium Gr5"><option value="Carbon Fibre Block"><option value="Carbon Sandwich"><option value="Carbon Monolithic"><option value="Glass Fibre Sandwich"><option value="Glass Fibre Monolithic"><option value="MDF"><option value="MDF Tooling"><option value="Tooling Board"><option value="Tooling Paste"><option value="Nylon"><option value="Delrin/POM"><option value="PEEK"><option value="HDPE"><option value="Brass"><option value="Copper"><option value="Mild Steel"><option value="Tool Steel D2"><option value="Tool Steel H13"></datalist>
+<datalist id="dlOp"></datalist>
+<datalist id="dlTask"><option value="Setup"><option value="Roughing"><option value="Finishing"><option value="Semi-Finishing"><option value="Drilling"><option value="Inspection"><option value="Deburring"><option value="Quality Check"><option value="Tool Change"><option value="Program Prove-out"><option value="Rework"><option value="Cleaning"><option value="Machining"></datalist>
+<div class="main">
+<div class="pnl active" id="pnl-dashboard"><div class="kpi-row" id="kpiRow"></div><div class="dash"><div class="dash-grid"><div class="dcard"><div class="dcard-h">⚙ Machine Utilization</div><div class="dcard-b" id="dMU"></div></div><div class="dcard"><div class="dcard-h">📊 Estimated vs Actual</div><div class="dcard-b" id="dEA"></div></div><div class="dcard" style="grid-column:1/-1"><div class="dcard-h">🗓 7-Day Capacity Heatmap</div><div class="dcard-b" id="dCap"></div></div></div></div></div>
+<div class="pnl" id="pnl-gantt"><div class="g-toolbar"><button class="btn" onclick="gToday()">◎ Today</button><div class="g-sep"></div><span class="g-zlbl">Zoom:</span><div class="btn-grp"><button class="btn gz" data-z="day" onclick="setZoom('day')">Day</button><button class="btn gz" data-z="week" onclick="setZoom('week')">Week</button><button class="btn gz" data-z="month" onclick="setZoom('month')">Month</button></div><div class="g-sep"></div><span class="g-zlbl">View:</span><div class="btn-grp"><button class="btn gv" id="gvThis" onclick="setGanttView('project')">This Project</button><button class="btn gv" id="gvAll" onclick="setGanttView('all')">All Projects</button></div><div class="g-sep"></div><button class="btn btn-g" onclick="autoSchedule()" title="Auto-schedule queued jobs to machines">⚡ Auto</button><button class="btn btn-d" onclick="resolveConflicts()" title="Push overlapping jobs to resolve conflicts" id="btnResolve" style="display:none">⚠ Fix Conflicts</button><div style="flex:1"></div><span class="g-zlbl" id="gRange"></span></div><div class="g-wrap"><div class="g-side"><div class="g-side-h">Machines</div><div class="g-side-b" id="gSide"></div></div><div class="g-tl" id="gTL"><div class="g-thdr" id="gTHdr"></div><div class="g-body" id="gBody"></div><div class="g-now" id="gNow" style="display:none"></div></div></div></div>
+<div class="pnl" id="pnl-jobs"><div class="jt-bar"><input type="text" id="jSrch" placeholder="Search..." style="width:140px" oninput="rJobs()"><select id="jFS" onchange="rJobs()"><option value="">All Status</option><option value="queued">Queued</option><option value="setup">Setup</option><option value="running">Running</option><option value="paused">Paused</option><option value="complete">Complete</option><option value="delayed">Delayed</option></select><select id="jFM" onchange="rJobs()"><option value="">All Machines</option></select><div style="flex:1"></div><span style="font-size:9px;color:var(--tx3);font-family:var(--mono)" id="jInfo"></span><button class="btn btn-a" onclick="openNewJobModal()">＋ Job</button></div>
+<div class="jt-wrap"><table class="jt"><thead><tr>
+<th onclick="srtJ('id')">ID<span class="sa">▲</span></th><th onclick="srtJ('partName')">Part<span class="sa">▲</span></th><th onclick="srtJ('machine')">Machine<span class="sa">▲</span></th><th onclick="srtJ('status')">Status<span class="sa">▲</span></th><th onclick="srtJ('priority')">Prio<span class="sa">▲</span></th>
+<th onclick="srtJ('duration')" title="Estimated hours">Est<span class="sa">▲</span></th>
+<th onclick="srtJ('actual')" title="Actual hours logged">Act<span class="sa">▲</span></th>
+<th onclick="srtJ('variance')" title="Variance">Var<span class="sa">▲</span></th>
+<th onclick="srtJ('progress')">Progress<span class="sa">▲</span></th><th>Actions</th>
+</tr></thead><tbody id="jTB"></tbody></table></div></div>
+<div class="pnl" id="pnl-machines"><div class="jt-bar"><button class="btn btn-a" onclick="openNewMachineModal()">＋ Machine</button><div style="flex:1"></div><span style="font-size:9px;color:var(--tx3);font-family:var(--mono)" id="mInfo"></span></div><div style="flex:1;overflow-y:auto"><div class="mc-grid" id="mcGrid"></div></div></div>
+<div class="pnl" id="pnl-log"><div class="jt-bar"><select id="logFM" onchange="rLog()"><option value="">All Machines</option></select><select id="logFT" onchange="rLog()"><option value="">All Types</option><option value="maintenance">Maintenance</option><option value="breakdown">Breakdown</option><option value="status_change">Status Change</option><option value="note">Note</option><option value="job_done">Job Done</option><option value="time_log">Time Log</option></select><div style="flex:1"></div><span style="font-size:9px;color:var(--tx3);font-family:var(--mono)" id="logInfo"></span><button class="btn btn-d" onclick="clearOldLogs()">🗑 Cleanup</button><button class="btn btn-a" onclick="openNewLogModal()">＋ Log</button></div><div class="jt-wrap" id="logWrap" style="padding:14px"></div></div>
+</div>
+</div>
+<div class="mo" id="moWrap" onclick="if(event.target===this)clModal()"><div class="md" id="moC"></div></div>
+<div class="tt" id="gTT"></div><div class="cm" id="ctxMenu"></div><div class="ts" id="toastS"></div>
+<div class="qe-popup" id="qePopup"></div>
+<div class="drag-ghost" id="dragGhost"></div>
+<input type="file" id="fIn" accept=".json" style="display:none" onchange="handleImport(event)">
+<div class="print-view" id="printView"></div>
+<script>
+/* ═══════ UTILS ═══════ */
+function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const fD=d=>{if(!d)return'-';return new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})};
+const fDT=d=>{if(!d)return'-';const t=new Date(d);return fD(d)+' '+t.toTimeString().slice(0,5)};
+const fH=h=>{if(h==null||isNaN(h))return'-';if(h===0)return'0h';if(h<0)return'-'+fH(Math.abs(h));if(h>0&&h<1)return(h*60).toFixed(0)+'m';return h.toFixed(1)+'h'};
+const aH=(d,h)=>new Date(new Date(d).getTime()+h*36e5);
+// Local datetime-local value (fixes UTC shift bug)
+function toLocalDT(iso){if(!iso)return'';const d=new Date(iso);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+// Variance formatting
+function fVar(est,act){if(!act)return'<span class="var-badge exact">—</span>';const v=act-est;const cls=v>0.5?'over':v<-0.5?'under':'exact';const sign=v>0?'+':'';return`<span class="var-badge ${cls}">${sign}${v.toFixed(1)}</span>`}
+function varClass(est,act){if(!act)return'exact';const v=act-est;return v>0.5?'over':v<-0.5?'under':'exact'}
+// Actual hours helper
+function jobActual(j){return(j.timeEntries||[]).reduce((s,e)=>s+(e.hours||0),0)}
+
+/* ═══════ DATABASE ═══════ */
+const DB='CNCSchedulerV5',DBV=1;let db=null;
+function oDB(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,DBV);r.onupgradeneeded=e=>{const d=e.target.result;['global','projects','machines'].forEach(n=>{if(!d.objectStoreNames.contains(n))d.createObjectStore(n,{keyPath:n==='global'?'key':'id'})});if(!d.objectStoreNames.contains('machineLogs')){const s=d.createObjectStore('machineLogs',{keyPath:'id'});s.createIndex('machineId','machineId',{unique:false})}};r.onsuccess=e=>{db=e.target.result;ok(db)};r.onerror=no})}
+function dTx(s,m='readonly'){return db.transaction(s,m).objectStore(s)}
+function dP(s,d){return new Promise((ok,no)=>{const r=dTx(s,'readwrite').put(d);r.onsuccess=()=>ok(d);r.onerror=no})}
+function dG(s,k){return new Promise((ok,no)=>{const r=dTx(s).get(k);r.onsuccess=()=>ok(r.result);r.onerror=no})}
+function dA(s){return new Promise((ok,no)=>{const r=dTx(s).getAll();r.onsuccess=()=>ok(r.result);r.onerror=no})}
+function dD(s,k){return new Promise((ok,no)=>{const r=dTx(s,'readwrite').delete(k);r.onsuccess=ok;r.onerror=no})}
+
+/* ═══════ STATE ═══════ */
+let G={activeProjectId:null},projects=[],machines=[],mLogs=[],P=null;
+let astTimer=null,nJID=1,nMID=1,dirtyLogIds=new Set(),deletedProjectIds=new Set(),deletedMachineIds=new Set();
+function defaultSettings(){return{hourlyRate:0,
+  shift1Start:'08:00',shift1End:'17:00',
+  shift2Start:'',shift2End:'',
+  breakPerShift:1,shiftOverlap:1,
+  dailyPM:0.5,weeklyPM:2,weeklyPMDay:6,monthlyPM:4,
+  ramadanMode:false,ramStart:'09:00',ramEnd:'15:00',ramBreak:0.5,
+  workingDays:[1,2,3,4,5,6]}}
+function defaultProject(name){return{id:uid(),name:name||'New Project',jobs:[],settings:defaultSettings(),ganttZoom:'week',sortCol:'id',sortDir:1,createdAt:Date.now(),updatedAt:Date.now()}}
+const isWD=d=>P&&P.settings?P.settings.workingDays.includes(d.getDay()):[1,2,3,4,5,6].includes(d.getDay());
+// Shift engine
+function getShifts(s){if(!s)s=P?.settings||defaultSettings();
+    if(s.ramadanMode)return[{start:s.ramStart||'09:00',end:s.ramEnd||'15:00',brk:s.ramBreak??0.5}];
+    const shifts=[{start:s.shift1Start||'08:00',end:s.shift1End||'17:00',brk:s.breakPerShift??1}];
+    if(s.shift2Start&&s.shift2End)shifts.push({start:s.shift2Start,end:s.shift2End,brk:s.breakPerShift??1});
+    return shifts}
+function shiftGrossH(sh){const[h1,m1]=sh.start.split(':').map(Number),[h2,m2]=sh.end.split(':').map(Number);let d=(h2*60+m2)-(h1*60+m1);if(d<=0)d+=1440;return d/60}
+function firstShiftStart(s){const sh=getShifts(s);return sh[0]?.start||'08:00'}
+function dailyH(s,dayDate){if(!s)s=P?.settings||defaultSettings();
+    const shifts=getShifts(s);const nShifts=shifts.length;
+    let gross=shifts.reduce((t,sh)=>t+shiftGrossH(sh),0);
+    let brk=shifts.reduce((t,sh)=>t+(sh.brk||0),0);
+    let overlap=(nShifts>1)?(s.shiftOverlap||0):0;
+    let pm=s.dailyPM||0;
+    // Weekly PM on designated day
+    if(dayDate){const dow=new Date(dayDate).getDay();if(dow===(s.weeklyPMDay??6))pm+=(s.weeklyPM||0);
+        // Monthly PM on 1st working day of month
+        const dd=new Date(dayDate).getDate();if(dd===1)pm+=(s.monthlyPM||0)}
+    return Math.max(0,gross-brk-overlap-pm)}
+function calcEndDate(si,dh){if(!si||dh<=0)return null;const s=P?.settings||defaultSettings();const fsStart=firstShiftStart(s);const[sh,sm]=fsStart.split(':').map(Number);
+    let rem=dh,cur=new Date(si);cur.setHours(0,0,0,0);let sf=0;
+    while(!isWD(cur)&&sf<400){cur.setDate(cur.getDate()+1);sf++}
+    while(rem>0.001&&sf<1500){if(isWD(cur)){const avail=dailyH(s,cur);if(avail>0){const td=Math.min(rem,avail);rem-=td;if(rem<=0.001){let mn=sm+Math.round(td*60),fh=sh+Math.floor(mn/60),fm=mn%60;if(fm>=60){fh++;fm-=60}if(fh>=24)fh%=24;cur.setHours(fh,fm,0,0);return cur.toISOString()}}}cur.setDate(cur.getDate()+1);sf++}
+    return cur.toISOString()}
+function workDaysBetween(a,b){let d=new Date(a),end=new Date(b),c=0;d.setHours(0,0,0,0);end.setHours(0,0,0,0);while(d<=end){if(isWD(d))c++;d.setDate(d.getDate()+1)}return c}
+function recalcJID(p){nJID=(p?.jobs||[]).reduce((m,j)=>Math.max(m,parseInt(String(j.id).replace(/\D/g,'')||0)),0)+1}
+function recalcMID(){nMID=machines.reduce((m,c)=>Math.max(m,parseInt(String(c.id).replace(/\D/g,'')||0)),0)+1}
+
+/* ═══════ PERSISTENCE ═══════ */
+async function saveAll(){try{if(P)P.updatedAt=Date.now();await dP('global',{key:'state',activeProjectId:G.activeProjectId});for(const p of projects)await dP('projects',p);for(const m of machines)await dP('machines',m);for(const id of dirtyLogIds){const l=mLogs.find(x=>x.id===id);if(l)await dP('machineLogs',l)}dirtyLogIds.clear();for(const pid of deletedProjectIds){try{await dD('projects',pid)}catch(e){}}deletedProjectIds.clear();for(const mid of deletedMachineIds){try{await dD('machines',mid)}catch(e){}}deletedMachineIds.clear();showAS('Saved')}catch(e){console.error('Save:',e);showAS('Error!')}}
+async function loadAll(){try{const gs=await dG('global','state');if(gs)G.activeProjectId=gs.activeProjectId||null;projects=await dA('projects')||[];machines=await dA('machines')||[];mLogs=(await dA('machineLogs')||[]).sort((a,b)=>(b.ts||0)-(a.ts||0));if(G.activeProjectId)P=projects.find(p=>p.id===G.activeProjectId)||null;if(!P&&projects.length)P=projects[0];if(P){G.activeProjectId=P.id;recalcJID(P)}recalcMID();
+// Migrate old jobs: add timeEntries if missing, migrate old settings
+projects.forEach(p=>{(p.jobs||[]).forEach(j=>{if(!j.timeEntries)j.timeEntries=[]});
+    const s=p.settings;if(s&&s.shiftsPerDay!==undefined&&!s.shift1Start){
+        const hps=s.hoursPerShift||8,st=s.startTime||'08:00';
+        const[sh,sm]=st.split(':').map(Number);const endM=(sh*60+sm)+hps*60;
+        s.shift1Start=st;s.shift1End=String(Math.floor(endM/60)).padStart(2,'0')+':'+String(endM%60).padStart(2,'0');
+        if((s.shiftsPerDay||1)>=2){const s2s=Math.max(0,endM-60);s.shift2Start=String(Math.floor(s2s/60)).padStart(2,'0')+':'+String(s2s%60).padStart(2,'0');const s2e=s2s+hps*60;s.shift2End=String(Math.floor(s2e/60)%24).padStart(2,'0')+':'+String(s2e%60).padStart(2,'0')}else{s.shift2Start='';s.shift2End=''}
+        s.breakPerShift=1;s.shiftOverlap=1;s.dailyPM=0.5;s.weeklyPM=2;s.weeklyPMDay=6;s.monthlyPM=4;
+        s.ramadanMode=false;s.ramStart='09:00';s.ramEnd='15:00';s.ramBreak=0.5;
+        delete s.shiftsPerDay;delete s.hoursPerShift;delete s.startTime}});
+}catch(e){console.error('Load:',e)}}
+function autoSave(){showAS('Saving...');if(astTimer)clearTimeout(astTimer);astTimer=setTimeout(()=>saveAll(),700)}
+function showAS(t){const e=document.getElementById('tpAS');if(e)e.textContent=t}
+function toast(m,type='info'){const s=document.getElementById('toastS'),el=document.createElement('div');el.className=`t ${type}`;el.innerHTML=`<span>${{success:'✓',error:'✕',warning:'⚠',info:'ℹ'}[type]||'ℹ'}</span>${esc(m)}`;s.appendChild(el);setTimeout(()=>{el.classList.add('h');setTimeout(()=>el.remove(),300)},3000)}
+function addLog(mid,type,desc,extra){const e={id:uid(),machineId:mid,type,desc,ts:Date.now(),projectId:P?.id||null,...(extra||{})};mLogs.unshift(e);dirtyLogIds.add(e.id);autoSave();return e}
+
+/* ═══════ PROJECT SWITCHER ═══════ */
+function toggleProjDD(){document.getElementById('projDD').classList.toggle('open')}
+document.addEventListener('click',e=>{if(!e.target.closest('.proj-switch'))document.getElementById('projDD').classList.remove('open');if(!e.target.closest('.cm'))document.getElementById('ctxMenu').classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.getElementById('projDD').classList.remove('open');clModal();clCM();qeClose()}if(e.ctrlKey&&e.key==='s'){e.preventDefault();saveAll();toast('Saved','success')}if(e.ctrlKey&&e.key==='n'){e.preventDefault();openNewJobModal()}});
+function renderProjDD(){const dd=document.getElementById('projDD');dd.innerHTML=`<div class="proj-dd-hdr"><span>Projects (${projects.length})</span><button class="btn btn-a" style="padding:3px 8px;font-size:10px" onclick="event.stopPropagation();newProject()">＋ New</button></div>`+projects.map(p=>{const tE=p.jobs.reduce((s,j)=>s+(j.durationHours||0),0),tA=p.jobs.reduce((s,j)=>s+jobActual(j),0);return`<div class="proj-dd-item ${p.id===G.activeProjectId?'active':''}" onclick="switchProject('${p.id}');toggleProjDD()"><div style="flex:1"><div class="pname">${esc(p.name)}</div><div class="pmeta">${p.jobs.length} jobs · Est ${tE.toFixed(0)}h · Act ${tA.toFixed(0)}h</div></div><div class="pacts"><span class="pact" title="Dup" onclick="event.stopPropagation();dupProject('${p.id}')">📋</span><span class="pact" title="Rename" onclick="event.stopPropagation();renameProject('${p.id}')">✏</span><span class="pact del" title="Delete" onclick="event.stopPropagation();delProject('${p.id}')">✕</span></div></div>`}).join('');document.getElementById('projBtnName').textContent=P?P.name:'No Project'}
+function switchProject(pid){P=projects.find(p=>p.id===pid);if(P){G.activeProjectId=P.id;recalcJID(P);syncZoomButtons();autoSave();refreshAll();toast(`→ "${P.name}"`,'success')}}
+function newProject(){const name=prompt('Project name:','New CNC Project');if(name===null)return;const n=name.trim();if(!n){toast('Name required','warning');return}const p=defaultProject(n);projects.push(p);P=p;G.activeProjectId=p.id;nJID=1;toggleProjDD();autoSave();refreshAll();toast(`Created "${n}"`,'success')}
+function dupProject(pid){const src=projects.find(p=>p.id===pid);if(!src)return;const np=JSON.parse(JSON.stringify(src));np.id=uid();np.name=src.name+' (Copy)';np.createdAt=Date.now();np.updatedAt=Date.now();projects.push(np);toast(`Duplicated`,'success');autoSave();renderProjDD()}
+function renameProject(pid){const p=projects.find(x=>x.id===pid);if(!p)return;const n=prompt('New name:',p.name);if(n===null)return;const t=n.trim();if(!t)return;p.name=t;p.updatedAt=Date.now();autoSave();refreshAll()}
+function delProject(pid){if(projects.length<=1){toast('Cannot delete last project','warning');return}if(!confirm('Delete project + all jobs?'))return;projects=projects.filter(p=>p.id!==pid);deletedProjectIds.add(pid);if(G.activeProjectId===pid){P=projects[0]||null;G.activeProjectId=P?.id||null;if(P)recalcJID(P)}autoSave();refreshAll();toast('Deleted','warning')}
+
+/* ═══════ TAB ═══════ */
+function swTab(n){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===n));document.querySelectorAll('.pnl').forEach(p=>p.classList.toggle('active',p.id===`pnl-${n}`));({dashboard:rDash,gantt:rGantt,jobs:rJobs,machines:rMach,log:rLog})[n]?.()}
+
+/* ═══════ DASHBOARD — Est vs Actual KPIs ═══════ */
+function rDash(){if(!P)return;const J=P.jobs,M=machines;
+    const totEst=J.reduce((s,j)=>s+(j.durationHours||0),0);
+    const totAct=J.reduce((s,j)=>s+jobActual(j),0);
+    const doneJ=J.filter(j=>j.status==='complete');
+    const doneEst=doneJ.reduce((s,j)=>s+(j.durationHours||0),0);
+    const doneAct=doneJ.reduce((s,j)=>s+jobActual(j),0);
+    const accuracy=doneEst>0?Math.max(0,Math.round(100-Math.abs(doneAct-doneEst)/doneEst*100)):100;
+    const rate=P.settings.hourlyRate||0;
+    const allJ=projects.flatMap(p=>p.jobs);
+    document.getElementById('kpiRow').innerHTML=`
+        <div class="kpi"><div class="kpi-l">Jobs</div><div class="kpi-v">${J.length}</div><div class="kpi-s">${doneJ.length} done</div></div>
+        <div class="kpi" data-c="c"><div class="kpi-l">Est Hours</div><div class="kpi-v">${totEst.toFixed(1)}</div><div class="kpi-s">${rate?'Cost '+(totEst*rate).toFixed(0):''}</div></div>
+        <div class="kpi" data-c="g"><div class="kpi-l">Actual Hours</div><div class="kpi-v">${totAct.toFixed(1)}</div><div class="kpi-s">${rate&&totAct?'Cost '+(totAct*rate).toFixed(0):''}</div></div>
+        <div class="kpi" data-c="${totAct?(totAct-totEst>0?'r':'g'):''}"><div class="kpi-l">Variance</div><div class="kpi-v">${totAct?((totAct-totEst)>0?'+':'')+(totAct-totEst).toFixed(1):'—'}</div><div class="kpi-s">${!totAct?'No time logged':totAct>totEst?'Over estimate':'Under/on est'}</div></div>
+        <div class="kpi" data-c="b"><div class="kpi-l">Accuracy</div><div class="kpi-v">${doneJ.length?accuracy+'%':'—'}</div><div class="kpi-s">completed jobs</div></div>
+        <div class="kpi"><div class="kpi-l">Machines</div><div class="kpi-v">${M.filter(m=>m.status==='online').length}/${M.length}</div><div class="kpi-s">${projects.length} projects</div></div>`;
+    // Machine util
+    document.getElementById('dMU').innerHTML=M.length?M.map(m=>{const mj=J.filter(j=>j.machineId===m.id),tH=mj.reduce((s,j)=>s+(j.durationHours||0),0),cH=mj.filter(j=>j.status==='complete').reduce((s,j)=>s+(j.durationHours||0),0),p=tH?(cH/tH*100).toFixed(0):0,cls=mj.some(j=>j.status==='running')?'run':(p>=100?'done':'idle');
+        return`<div class="mu-row"><div class="mu-name">${esc(m.name)}</div><div class="mu-bar"><div class="mu-fill ${cls}" style="width:${Math.min(p,100)}%"></div></div><div class="mu-pct">${p}%</div></div>`}).join(''):'<div style="color:var(--tx3);font-size:10px;padding:14px;text-align:center">Add machines</div>';
+    // Est vs Actual per-job chart
+    const eaEl=document.getElementById('dEA');
+    const withAct=J.filter(j=>jobActual(j)>0).slice(0,12);
+    eaEl.innerHTML=withAct.length?withAct.map(j=>{const est=j.durationHours||0,act=jobActual(j),v=act-est,cls=varClass(est,act);
+        return`<div class="mu-row"><div class="mu-name" title="${esc(j.partName)}">${esc(j.partName||j.id)}</div><div style="flex:1;display:flex;gap:4px;align-items:center"><div style="font-family:var(--mono);font-size:9px;color:var(--tx3);width:40px;text-align:right">${est.toFixed(1)}e</div><div style="font-family:var(--mono);font-size:9px;color:var(--tx);width:40px;text-align:right">${act.toFixed(1)}a</div><span class="var-badge ${cls}">${v>0?'+':''}${v.toFixed(1)}</span></div></div>`}).join(''):'<div style="color:var(--tx3);font-size:10px;padding:14px;text-align:center">Log actual time on jobs to see comparison</div>';
+    // 7-day capacity heatmap
+    const hmEl=document.getElementById('dHM');if(hmEl&&M.length){
+        const today=new Date();today.setHours(0,0,0,0);const allJobs=projects.flatMap(p=>p.jobs);
+        let hm='<div class="hm-grid"><div class="hm-cell hm-hdr">Machine</div>';
+        const days=[];for(let d=0;d<7;d++){const dt=new Date(today);dt.setDate(dt.getDate()+d);days.push(dt);hm+=`<div class="hm-cell hm-hdr">${dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>`}
+        M.forEach(m=>{hm+=`<div class="hm-cell hm-name">${esc(m.name)}</div>`;
+            days.forEach(dt=>{const dayS=dt.getTime(),dayE=dayS+864e5;
+                let hrs=0;allJobs.filter(j=>j.machineId===m.id&&j.startDate&&j.endDate&&j.status!=='complete').forEach(j=>{const js=new Date(j.startDate).getTime(),je=new Date(j.endDate).getTime();if(js<dayE&&je>dayS){const dh=dailyH(P.settings,dt);hrs+=Math.min(dh,j.durationHours||0)}});
+                const cap=dailyH(P.settings,dt);const pct=cap>0?hrs/cap*100:0;
+                const cls=pct<=0?'hm-0':pct<=60?'hm-1':pct<=90?'hm-2':'hm-3';
+                hm+=`<div class="hm-cell ${cls}" title="${m.name}: ${hrs.toFixed(1)}h/${cap.toFixed(1)}h (${pct.toFixed(0)}%)">${pct>0?pct.toFixed(0)+'%':'-'}</div>`})});
+        hm+='</div>';hmEl.innerHTML=hm}}
+
+/* ═══════ GANTT — multi-project view ═══════ */
+let gDW=120,gSD=null,gDays=30;const ZM={day:180,week:120,month:40};
+let gViewAll=false; // false = this project, true = all projects
+const PROJ_COLORS=['#f59e0b','#3b82f6','#10b981','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#6366f1'];
+function projColor(idx){return PROJ_COLORS[idx%PROJ_COLORS.length]}
+function setGanttView(v){gViewAll=(v==='all');syncGanttViewBtns();rGantt()}
+function syncGanttViewBtns(){const a=document.getElementById('gvAll'),t=document.getElementById('gvThis');if(a)a.style.borderColor=gViewAll?'var(--acc)':'';if(a)a.style.color=gViewAll?'var(--acc)':'';if(t)t.style.borderColor=!gViewAll?'var(--acc)':'';if(t)t.style.color=!gViewAll?'var(--acc)':''}
+function syncZoomButtons(){const z=P?.ganttZoom||'week';gDW=ZM[z]||120;document.querySelectorAll('.gz').forEach(b=>{const a=b.dataset.z===z;b.style.borderColor=a?'var(--acc)':'';b.style.color=a?'var(--acc)':''})}
+function setZoom(z){if(!P)return;P.ganttZoom=z;syncZoomButtons();rGantt();autoSave()}
+// Collect all visible jobs with project metadata
+function ganttJobs(){if(!gViewAll)return P?P.jobs.map(j=>({...j,_projId:P.id,_projName:P.name,_projIdx:0,_isActive:true})):[];
+    return projects.flatMap((p,pi)=>p.jobs.map(j=>({...j,_projId:p.id,_projName:p.name,_projIdx:pi,_isActive:p.id===G.activeProjectId})))}
+// Find a job across all projects (for drag/edit in all-projects mode)
+function findJobAcross(jid){for(const p of projects){const j=p.jobs.find(x=>x.id===jid);if(j)return{job:j,project:p}}return null}
+function compRange(){const td=new Date();td.setHours(0,0,0,0);let mn=new Date(td),mx=new Date(td);mn.setDate(mn.getDate()-3);mx.setDate(mx.getDate()+14);
+    const jj=ganttJobs();jj.forEach(j=>{if(j.startDate){const d=new Date(j.startDate);if(d<mn)mn=new Date(d)}if(j.endDate){const d=new Date(j.endDate);if(d>mx)mx=new Date(d)}});
+    mn.setDate(mn.getDate()-2);mx.setDate(mx.getDate()+5);gSD=new Date(mn);gSD.setHours(0,0,0,0);gDays=Math.max(14,Math.ceil((mx-mn)/864e5))}
+function rGantt(){if(!P)return;compRange();const M=machines,GJ=ganttJobs(),tw=gDays*gDW,td=new Date();td.setHours(0,0,0,0);
+    const hasUn=GJ.some(j=>!j.machineId);const rows=[...M.map(m=>({id:m.id,name:m.name,status:m.status,isUn:false}))];if(hasUn)rows.push({id:'__un__',name:'Unassigned',status:'offline',isUn:true});
+    // Detect conflicts (overlapping jobs on same machine)
+    const conflicts=new Set();
+    const scheduled=GJ.filter(j=>j.machineId&&j.startDate&&j.endDate&&j.status!=='complete');
+    scheduled.forEach((a,i)=>{const as=new Date(a.startDate).getTime(),ae=new Date(a.endDate).getTime();for(let k=i+1;k<scheduled.length;k++){const b=scheduled[k];if(b.machineId!==a.machineId)continue;const bs=new Date(b.startDate).getTime(),be=new Date(b.endDate).getTime();if(as<be&&ae>bs){conflicts.add(a.id);conflicts.add(b.id)}}});
+    // Machine load calc
+    const mLoadH={};GJ.forEach(j=>{if(j.machineId&&j.startDate&&j.status!=='complete')mLoadH[j.machineId]=(mLoadH[j.machineId]||0)+(j.durationHours||0)});
+    const maxLoad=Math.max(1,...Object.values(mLoadH));
+    document.getElementById('gSide').innerHTML=rows.length?rows.map(r=>{const isR=GJ.some(j=>j.machineId===r.id&&j.status==='running');const c=r.isUn?'var(--tx3)':isR?'var(--s-run)':(r.status==='online'?'var(--s-done)':'var(--s-idle)');
+        const load=mLoadH[r.id]||0;const loadPct=Math.min(100,load/maxLoad*100);const loadCls=loadPct>80?'hi':loadPct>40?'med':'lo';
+        return`<div class="g-mrow${r.isUn?' unassigned':''}" ${r.isUn?'':`onclick="openMachineDetailModal('${r.id}')"`} style="flex-direction:column;align-items:stretch;justify-content:center;padding:4px 10px"><div style="display:flex;align-items:center"><div class="g-mind" style="background:${c}"></div><div class="g-mlbl">${esc(r.name)}</div><span style="font-family:var(--mono);font-size:8px;color:var(--tx3)">${load?load.toFixed(0)+'h':''}</span></div>${!r.isUn?`<div class="g-mload"><div class="g-mload-fill ${loadCls}" style="width:${loadPct}%"></div></div>`:''}</div>`}).join(''):'';
+    const hE=document.getElementById('gTHdr');let hH='';for(let i=0;i<gDays;i++){const d=new Date(gSD);d.setDate(d.getDate()+i);hH+=`<div class="g-tc${!isWD(d)?' we':''}${d.getTime()===td.getTime()?' today':''}" style="width:${gDW}px"><div class="g-td">${d.toLocaleDateString('en-GB',{weekday:'short'})}</div><div class="g-tdt">${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</div></div>`}hE.innerHTML=hH;hE.style.width=tw+'px';
+    const bE=document.getElementById('gBody');bE.style.width=tw+'px';let bH='';
+    rows.forEach(r=>{bH+=`<div class="g-row" data-machine="${r.id}">`;for(let i=0;i<gDays;i++){const d=new Date(gSD);d.setDate(d.getDate()+i);if(!isWD(d))bH+=`<div style="position:absolute;left:${i*gDW}px;top:0;width:${gDW}px;height:100%;background:rgba(255,255,255,.012);pointer-events:none"></div>`}
+        GJ.filter(j=>(r.isUn?!j.machineId:j.machineId===r.id)&&j.startDate&&j.endDate).forEach(j=>{
+            const estEnd=new Date(j.endDate),sD=new Date(j.startDate);
+            const act=jobActual(j),est=j.durationHours||0,prog=j.progress||0;
+            const isComplete=j.status==='complete';
+            // For completed jobs with actual time: compute actual end date, show that as block width
+            let dispEnd=estEnd;let showEstGhost=false;let estGhostEnd=estEnd;
+            if(isComplete&&act>0&&j.startDate){
+                const aEnd=calcEndDate(j.startDate,act);
+                if(aEnd){dispEnd=new Date(aEnd);showEstGhost=Math.abs(dispEnd-estEnd)>36e5;estGhostEnd=estEnd}}
+            const so=(sD-gSD)/864e5,dur=Math.max(.15,(dispEnd-sD)/864e5),l=so*gDW,w=dur*gDW;
+            const otherCls=j._isActive?'':'other-proj';const conflictCls=conflicts.has(j.id)?'conflict':'';
+            const pCol=gViewAll?projColor(j._projIdx):'';const label=gViewAll?esc(j._projName).slice(0,12)+': '+esc(j.partName||j.id):esc(j.partName||j.id);
+            const actPct=est>0?Math.min(120,act/est*100):0;
+            const actCls=actPct>100?'act-over':actPct>80?'act-warn':'act-ok';
+            // Build meter HTML
+            let meterH='';
+            if(w>30){
+                let lblLeft=isComplete?`${fH(act)} actual`:`${act?fH(act):'0h'} / ${fH(est)}`;
+                let lblRight=isComplete?(act>est?`+${fH(act-est)} over`:act<est?`${fH(est-act)} saved`:'on target'):`${prog}%`;
+                const lblH=w>60?`<div class="g-meter-lbl"><span>${lblLeft}</span><span>${lblRight}</span></div>`:'';
+                if(isComplete){
+                    // Completed: single bar showing actual vs est ratio
+                    meterH=`<div class="g-meter">${lblH}<div class="g-meter-track" style="height:8px"><div class="g-meter-fill ${actCls}" style="width:${Math.min(100,actPct)}%;height:100%;border-radius:2px"></div></div></div>`
+                }else{
+                    // In progress: dual track (progress top, actual/est bottom)
+                    meterH=`<div class="g-meter">${lblH}<div class="g-meter-track"><div class="g-meter-fill pg" style="width:${Math.min(100,prog)}%"></div></div><div class="g-meter-track"><div class="g-meter-fill ${actCls}" style="width:${Math.min(100,actPct)}%"></div></div></div>`}}
+            // Estimated ghost outline (for completed jobs where actual != estimated)
+            let ghostH='';
+            if(showEstGhost){const gSo=(sD-gSD)/864e5,gDur=Math.max(.15,(estGhostEnd-sD)/864e5),gL=gSo*gDW,gW=gDur*gDW;
+                ghostH=`<div class="g-est-ghost" style="left:${gL}px;width:${gW}px"><span class="g-est-ghost-lbl">est</span></div>`}
+            bH+=ghostH;
+            bH+=`<div class="g-job ${j.status} ${otherCls} ${conflictCls}" style="left:${l}px;width:${w}px" data-jid="${j.id}" data-pid="${j._projId}" draggable="${j._isActive}" ondragstart="jDS(event,'${j.id}')" ondragend="jDE(event)" onclick="gJobClick('${j.id}','${j._projId}')" ondblclick="event.stopPropagation();qeOpen(event,'${j.id}','${j._projId}')" oncontextmenu="jCM(event,'${j.id}','${j._projId}')" onmouseenter="jTTin(event,'${j.id}','${j._projId}')" onmouseleave="jTTout()">${pCol?`<div class="g-job-proj" style="background:${pCol}"></div>`:''}<div class="g-job-top"><div class="g-job-t">${label}</div>${w>45&&est?`<span class="g-job-hrs">${isComplete?fH(act):fH(est)}</span>`:''}</div>${meterH}${j._isActive?`<div class="rh l" onmousedown="rsS(event,'${j.id}','l')"></div><div class="rh r" onmousedown="rsS(event,'${j.id}','r')"></div>`:''}</div>`});bH+='</div>'});
+    bE.innerHTML=bH;bE.querySelectorAll('.g-row').forEach(row=>{row.addEventListener('dragover',e=>{e.preventDefault();row.style.background='rgba(245,158,11,.05)'});row.addEventListener('dragleave',()=>{row.style.background=''});row.addEventListener('drop',e=>jDrop(e,row))});
+    const to=(td-gSD)/864e5,nl=document.getElementById('gNow');if(to>=0&&to<=gDays){nl.style.display='block';nl.style.left=(to*gDW)+'px'}else nl.style.display='none';
+    const tl=document.getElementById('gTL');tl.onscroll=()=>{document.getElementById('gSide').scrollTop=tl.scrollTop};
+    const totalJobs=gViewAll?GJ.length:P.jobs.length;const conflictN=conflicts.size;
+    document.getElementById('gRange').textContent=`${fD(gSD)} → ${fD(aH(gSD,gDays*24))} · ${totalJobs} jobs${gViewAll?' (all '+projects.length+' projects)':''}${conflictN?' · ⚠ '+conflictN+' conflicts':''}`;document.getElementById('bG').textContent=P.jobs.length;
+    const rb=document.getElementById('btnResolve');if(rb)rb.style.display=conflictN?'':'none'}
+// Click handler — switch project if clicking other project's job
+function gJobClick(jid,pid){if(pid&&pid!==G.activeProjectId){const p=projects.find(x=>x.id===pid);if(p&&confirm(`Switch to "${p.name}" to edit this job?`)){switchProject(pid);setTimeout(()=>openEditJobModal(jid),200)}return}openEditJobModal(jid)}
+function gToday(){const td=new Date();td.setHours(0,0,0,0);const o=(td-gSD)/864e5,tl=document.getElementById('gTL');tl.scrollLeft=Math.max(0,o*gDW-tl.clientWidth/3)}
+let dragJID=null,dragOX=0;
+// jDS and jDE are defined below with drag ghost preview
+function jDrop(e,row){e.preventDefault();row.style.background='';const gh=document.getElementById('dragGhost');if(gh)gh.style.display='none';document.removeEventListener('dragover',dragGhostMove);if(!dragJID||!P)return;const mid=row.dataset.machine,rect=row.getBoundingClientRect(),tl=document.getElementById('gTL'),xPos=e.clientX-rect.left+tl.scrollLeft-dragOX;const nS=new Date(gSD);nS.setDate(nS.getDate()+Math.round(xPos/gDW));const[sh,sm]=firstShiftStart(P.settings).split(':').map(Number);nS.setHours(sh||8,sm||0,0,0);const j=P.jobs.find(jj=>jj.id===dragJID);if(j){const oldM=j.machineId;j.machineId=mid==='__un__'?null:mid;j.startDate=nS.toISOString();j.endDate=calcEndDate(j.startDate,j.durationHours||8);j.updatedAt=Date.now();if(oldM!==j.machineId)addLog(j.machineId||oldM,'setup_change',`Job "${j.partName||j.id}" moved`);autoSave();rGantt();toast(`Moved → ${fDT(nS)} to ${fDT(j.endDate)}`,'success')}dragJID=null}
+let rsD=null;
+function rsS(e,id,side){e.preventDefault();e.stopPropagation();const el=e.target.parentElement;rsD={id,side,sx:e.clientX,oL:parseFloat(el.style.left),oW:parseFloat(el.style.width),el};document.addEventListener('mousemove',rsM);document.addEventListener('mouseup',rsE)}
+function rsM(e){if(!rsD)return;const dx=e.clientX-rsD.sx;if(rsD.side==='r')rsD.el.style.width=Math.max(14,rsD.oW+dx)+'px';else{const nL=rsD.oL+dx,nW=rsD.oW-dx;if(nW>14){rsD.el.style.left=nL+'px';rsD.el.style.width=nW+'px'}}}
+function rsE(){if(!rsD||!P)return;const l=parseFloat(rsD.el.style.left),w=parseFloat(rsD.el.style.width),ns=new Date(gSD),ne=new Date(gSD);ns.setDate(ns.getDate()+Math.round(l/gDW));ne.setDate(ne.getDate()+Math.round((l+w)/gDW));if(ne<=ns)ne.setTime(ns.getTime()+864e5);const job=P.jobs.find(jj=>jj.id===rsD.id);if(job){const[sh,sm]=firstShiftStart(P.settings).split(':').map(Number);ns.setHours(sh||8,sm||0,0,0);ne.setHours(sh||8,sm||0,0,0);job.startDate=ns.toISOString();job.endDate=ne.toISOString();const wd=workDaysBetween(ns,ne);const dh=dailyH(P.settings);job.durationHours=Math.max(dh,wd*dh);job.updatedAt=Date.now();autoSave();rGantt()}document.removeEventListener('mousemove',rsM);document.removeEventListener('mouseup',rsE);rsD=null}
+function jTTin(e,id,pid){const fp=pid?findJobAcross(id):null;const j=fp?fp.job:(P?P.jobs.find(x=>x.id===id):null);if(!j)return;const pName=fp?fp.project.name:P?.name;const tt=document.getElementById('gTT'),mc=machines.find(m=>m.id===j.machineId),act=jobActual(j),est=j.durationHours||0;
+    const actPct=est>0?Math.round(act/est*100):0;const progPct=j.progress||0;const isComp=j.status==='complete';const diff=act-est;
+    tt.innerHTML=`<div class="tt-t">${esc(j.partName||j.id)}${j.overtime?' <span style="color:var(--s-delay)">OT</span>':''}${j.supervision?' <span style="color:var(--s-setup)">SUP</span>':''}</div>${gViewAll?`<div class="tt-r"><span class="tt-l">Project</span><span class="tt-v" style="color:var(--acc)">${esc(pName)}</span></div>`:''}<div class="tt-r"><span class="tt-l">Machine</span><span class="tt-v">${esc(mc?.name||'—')}</span></div><div class="tt-r"><span class="tt-l">Status</span><span class="tt-v">${j.status}</span></div><div class="tt-r"><span class="tt-l">Start</span><span class="tt-v">${fDT(j.startDate)}</span></div><div class="tt-r"><span class="tt-l">End ${isComp&&act?'(actual)':'(est)'}</span><span class="tt-v">${isComp&&act&&j.startDate?fDT(calcEndDate(j.startDate,act)):fDT(j.endDate)}</span></div><div style="margin:3px 0;border-top:1px solid var(--brd)"></div><div class="tt-r"><span class="tt-l">Estimated</span><span class="tt-v">${fH(est)}</span></div><div class="tt-r"><span class="tt-l">Actual</span><span class="tt-v" style="color:var(--var-${varClass(est,act||undefined)})">${act?fH(act)+' ('+actPct+'%)':'—'}</span></div>${act?`<div class="tt-r"><span class="tt-l">Variance</span><span class="tt-v" style="color:var(--var-${varClass(est,act)});font-weight:800">${(diff>0?'+':'')+fH(diff)}</span></div>`:''}<div class="tt-r"><span class="tt-l">Progress</span><span class="tt-v">${progPct}%</span></div>${isComp?`<div style="margin-top:3px;font-size:8px;color:var(--s-done);font-weight:700">✓ Showing actual time on Gantt</div>`:`<div style="margin-top:3px;font-size:7px;color:var(--tx3)">▪ Top = progress · ▪ Bottom = actual/est</div>`}`;
+    tt.style.left='-9999px';tt.style.top='-9999px';tt.classList.add('show');requestAnimationFrame(()=>{const r=tt.getBoundingClientRect();let x=e.clientX+10,y=e.clientY+10;if(x+r.width>window.innerWidth)x=e.clientX-r.width-10;if(y+r.height>window.innerHeight)y=e.clientY-r.height-10;tt.style.left=x+'px';tt.style.top=y+'px'})}
+function jTTout(){document.getElementById('gTT').classList.remove('show')}
+function jCM(e,id,pid){e.preventDefault();e.stopPropagation();const isOther=pid&&pid!==G.activeProjectId;const pName=isOther?projects.find(p=>p.id===pid)?.name:'';
+    const cm=document.getElementById('ctxMenu');
+    if(isOther){cm.innerHTML=`<div class="cm-i" style="color:var(--tx3);font-size:9px;pointer-events:none">📁 ${esc(pName)}</div><div class="cm-d"></div><div class="cm-i" onclick="switchProject('${pid}');clCM()">🔀 Switch to this project</div><div class="cm-i" onclick="gJobClick('${id}','${pid}');clCM()">✏ Switch & Edit</div>`}
+    else{cm.innerHTML=`<div class="cm-i" onclick="qeOpen(event,'${id}','${pid||''}');clCM()">⚡ Quick Edit</div><div class="cm-i" onclick="openLogTimeModal('${id}');clCM()">⏱ Log Time</div><div class="cm-i" onclick="openEditJobModal('${id}');clCM()">✏ Edit</div><div class="cm-d"></div><div class="cm-i" onclick="dupJob('${id}');clCM()">📋 Duplicate</div><div class="cm-i" onclick="dupJobOffset('${id}');clCM()">📋 Dup + Next Run</div><div class="cm-d"></div><div class="cm-i" onclick="setJS('${id}','queued');clCM()">🔵 Queued</div><div class="cm-i" onclick="setJS('${id}','setup');clCM()">🔵 Setup</div><div class="cm-i" onclick="setJS('${id}','running');clCM()">🟡 Running</div><div class="cm-i" onclick="setJS('${id}','complete');clCM()">🟢 Complete</div><div class="cm-i" onclick="setJS('${id}','delayed');clCM()">🔴 Delayed</div><div class="cm-d"></div><div class="cm-i d" onclick="delJob('${id}');clCM()">🗑 Delete</div>`}
+    cm.classList.add('open');let x=e.clientX,y=e.clientY;requestAnimationFrame(()=>{const r=cm.getBoundingClientRect();if(x+r.width>window.innerWidth)x=window.innerWidth-r.width-4;if(y+r.height>window.innerHeight)y=window.innerHeight-r.height-4;cm.style.left=x+'px';cm.style.top=y+'px'})}
+function clCM(){document.getElementById('ctxMenu').classList.remove('open')}
+function autoSchedule(){if(!P)return;if(!machines.length){toast('Add machines','warning');return}const un=P.jobs.filter(j=>!j.startDate||j.status==='queued');if(!un.length){toast('No queued jobs','info');return}const pm={high:0,medium:1,low:2};un.sort((a,b)=>(pm[a.priority]||1)-(pm[b.priority]||1));const onM=machines.filter(m=>m.status==='online');if(!onM.length){toast('No online machines','warning');return}const met={};onM.forEach(m=>{const ex=P.jobs.filter(j=>j.machineId===m.id&&j.endDate&&j.status!=='queued');met[m.id]=ex.reduce((mx,j)=>Math.max(mx,new Date(j.endDate).getTime()),Date.now())});const[sh,sm]=firstShiftStart(P.settings).split(':').map(Number);un.forEach(j=>{let bm=onM[0].id,bt=Infinity;for(const id of Object.keys(met))if(met[id]<bt){bt=met[id];bm=id}let start=new Date(bt);const dh=dailyH(P.settings,start);const shEndH=sh+(dh||8);if(start.getHours()>=shEndH||!isWD(start)||start<new Date()){if(start<new Date())start=new Date();start.setDate(start.getDate()+1);start.setHours(sh,sm,0,0);let sf=0;while(!isWD(start)&&sf<30){start.setDate(start.getDate()+1);sf++}}if(start.getHours()<sh)start.setHours(sh,sm,0,0);j.machineId=bm;j.startDate=start.toISOString();j.endDate=calcEndDate(j.startDate,j.durationHours||8);j.status='queued';j.updatedAt=Date.now();met[bm]=new Date(j.endDate||start).getTime()});autoSave();rGantt();toast(`Scheduled ${un.length} jobs`,'success')}
+
+/* ═══════ JOBS TABLE — Est/Actual/Variance columns ═══════ */
+function srtJ(c){if(!P)return;if(P.sortCol===c)P.sortDir*=-1;else{P.sortCol=c;P.sortDir=1}rJobs();
+    // Update header arrows
+    document.querySelectorAll('table.jt th').forEach(th=>{th.classList.remove('sorted');const sa=th.querySelector('.sa');if(sa)sa.textContent='▲'});
+    const idx={id:0,partName:1,machine:2,status:3,priority:4,duration:5,actual:6,variance:7,progress:8}[c];
+    if(idx!==undefined){const th=document.querySelectorAll('table.jt th')[idx];if(th){th.classList.add('sorted');const sa=th.querySelector('.sa');if(sa)sa.textContent=P.sortDir>0?'▲':'▼'}}}
+function rJobs(){if(!P)return;const q=(document.getElementById('jSrch')?.value||'').toLowerCase(),sf=document.getElementById('jFS')?.value||'',mf=document.getElementById('jFM')?.value||'';
+    let f=P.jobs.filter(j=>{if(sf&&j.status!==sf)return false;if(mf&&j.machineId!==mf)return false;if(q&&!`${j.id} ${j.partName} ${j.material} ${j.notes}`.toLowerCase().includes(q))return false;return true});
+    const c=P.sortCol;f.sort((a,b)=>{let va=a[c]??'',vb=b[c]??'';if(c==='start'){va=a.startDate||'';vb=b.startDate||''}if(c==='end'){va=a.endDate||'';vb=b.endDate||''}if(c==='duration'){va=a.durationHours||0;vb=b.durationHours||0}if(c==='actual'){va=jobActual(a)||0;vb=jobActual(b)||0}if(c==='variance'){const aa=jobActual(a),ab=jobActual(b);va=aa?aa-(a.durationHours||0):0;vb=ab?ab-(b.durationHours||0):0}if(c==='machine'){va=machines.find(m=>m.id===a.machineId)?.name||'';vb=machines.find(m=>m.id===b.machineId)?.name||''}if(typeof va==='number')return(va-vb)*P.sortDir;return String(va).localeCompare(String(vb))*P.sortDir});
+    document.getElementById('jTB').innerHTML=f.length?f.map(j=>{const mc=machines.find(m=>m.id===j.machineId),act=jobActual(j);
+        const flags=(j.overtime?'<span style="color:var(--s-delay);font-size:7px;font-weight:700">OT</span> ':'')+(j.supervision?'<span style="color:var(--s-setup);font-size:7px;font-weight:700">SUP</span>':'');
+        const pgCls=j.progress>=100?'hi':j.progress>=40?'mid':'';
+        return`<tr><td>${esc(j.id)}</td><td style="font-weight:600;color:var(--tx)">${esc(j.partName||'-')} ${flags}</td><td>${mc?esc(mc.name):'—'}</td><td><span class="sb ${j.status} clickable" onclick="event.stopPropagation();cycleStatus('${j.id}')" title="Click to change status"><span class="sd ${j.status}"></span>${j.status}</span></td><td><span class="pr ${j.priority||'medium'}">${(j.priority||'MED').toUpperCase()}</span></td><td style="font-family:var(--mono)" title="Estimated">${fH(j.durationHours)}</td><td style="font-family:var(--mono);${act?'color:var(--tx)':''}" title="Actual logged">${act?fH(act):'—'}</td><td>${fVar(j.durationHours||0,act)}</td><td title="${j.progress||0}%"><div class="pg-bar"><div class="pg-fill ${pgCls}" style="width:${j.progress||0}%"></div></div><span style="font-family:var(--mono);font-size:9px">${j.progress||0}%</span></td><td style="white-space:nowrap"><button class="btn btn-t" onclick="openLogTimeModal('${j.id}')" title="Log actual time">⏱</button> <button class="btn" onclick="openEditJobModal('${j.id}')" title="Edit job">✏</button></td></tr>`}).join(''):'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--tx3)">No jobs match filters</td></tr>';
+    const totE=P.jobs.reduce((s,j)=>s+(j.durationHours||0),0),totA=P.jobs.reduce((s,j)=>s+jobActual(j),0);
+    document.getElementById('bJ').textContent=P.jobs.length;document.getElementById('jInfo').textContent=`${f.length}/${P.jobs.length} · Est ${totE.toFixed(1)}h · Act ${totA.toFixed(1)}h`;
+    const mfE=document.getElementById('jFM'),cv=mfE.value;mfE.innerHTML='<option value="">All Machines</option>'+machines.map(m=>`<option value="${m.id}" ${m.id===cv?'selected':''}>${esc(m.name)}</option>`).join('')}
+
+/* ═══════ MACHINES ═══════ */
+function rMach(){const g=document.getElementById('mcGrid');document.getElementById('bM').textContent=machines.length;document.getElementById('mInfo').textContent=`${machines.length} machines`;const allJ=projects.flatMap(p=>p.jobs);
+    if(!machines.length){g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-i">⚙</div><div class="empty-t">No Machines</div><button class="btn btn-a" onclick="openNewMachineModal()">＋ Add</button></div>';return}
+    g.innerHTML=machines.map(m=>{const mj=allJ.filter(j=>j.machineId===m.id),tE=mj.reduce((s,j)=>s+(j.durationHours||0),0),tA=mj.reduce((s,j)=>s+jobActual(j),0);return`<div class="mc"><div class="mc-h"><div class="mc-dot ${m.status}"></div><div class="mc-name">${esc(m.name)}</div><button class="btn" onclick="openMachineDetailModal('${m.id}')">View</button><button class="btn" onclick="openEditMachineModal('${m.id}')">Edit</button></div><div class="mc-b"><div class="mc-s"><span class="l">Type</span><span class="v">${esc(m.type||'-')}</span></div><div class="mc-s"><span class="l">Status</span><span class="v" style="color:${m.status==='online'?'var(--s-done)':m.status==='maintenance'?'var(--s-delay)':'var(--tx3)'}">${m.status}</span></div><div class="mc-s"><span class="l">Est Hours</span><span class="v">${tE.toFixed(1)}h</span></div><div class="mc-s"><span class="l">Actual Hours</span><span class="v">${tA.toFixed(1)}h</span></div><div class="mc-s"><span class="l">Variance</span><span class="v" style="color:var(--var-${varClass(tE,tA||undefined)})">${tA?(((tA-tE)>0?'+':'')+(tA-tE).toFixed(1)+'h'):'—'}</span></div></div></div>`}).join('')}
+
+/* ═══════ LOG TAB ═══════ */
+function rLog(){const mf=document.getElementById('logFM')?.value||'',tf=document.getElementById('logFT')?.value||'';let f=mLogs.filter(l=>{if(mf&&l.machineId!==mf)return false;if(tf&&l.type!==tf)return false;return true});document.getElementById('bL').textContent=mLogs.length;document.getElementById('logInfo').textContent=`${f.length}/${mLogs.length}`;
+    document.getElementById('logWrap').innerHTML=f.length?f.slice(0,200).map(l=>{const m=machines.find(x=>x.id===l.machineId),pr=projects.find(p=>p.id===l.projectId);return`<div class="log-entry"><span class="log-type ${l.type}">${l.type.replace(/_/g,' ')}</span><div class="log-body"><div class="log-desc">${esc(l.desc||'-')}</div><div class="log-meta">${esc(m?.name||'?')} · ${new Date(l.ts).toLocaleString('en-GB')}${pr?' · '+esc(pr.name):''}</div></div></div>`}).join(''):'<div class="empty"><div class="empty-i">📋</div><div class="empty-t">No Logs</div></div>';
+    const mfE=document.getElementById('logFM'),cv=mfE.value;mfE.innerHTML='<option value="">All Machines</option>'+machines.map(m=>`<option value="${m.id}" ${m.id===cv?'selected':''}>${esc(m.name)}</option>`).join('')}
+async function clearOldLogs(){const days=parseInt(prompt('Delete logs older than days:','90'));if(isNaN(days)||days<1)return;const cutoff=Date.now()-days*864e5;const old=mLogs.filter(l=>l.ts<cutoff);if(!old.length){toast('No old logs','info');return}if(!confirm(`Delete ${old.length} entries?`))return;for(const l of old){try{await dD('machineLogs',l.id)}catch(e){}}mLogs=mLogs.filter(l=>l.ts>=cutoff);refreshAll();toast(`Removed ${old.length}`,'success')}
+
+/* ═══════ MODALS ═══════ */
+function opModal(h){document.getElementById('moC').innerHTML=h;document.getElementById('moWrap').classList.add('open')}
+function clModal(){document.getElementById('moWrap').classList.remove('open')}
+
+/* ═══════ LOG TIME MODAL (NEW) ═══════ */
+function openLogTimeModal(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;
+    const entries=j.timeEntries||[];const totalAct=entries.reduce((s,e)=>s+(e.hours||0),0);
+    const lastOp=entries.length?entries[entries.length-1].operator||'':'';
+    const entriesHTML=entries.length?entries.map((e,i)=>`<div class="te-row"><div class="te-hrs">${(e.hours||0).toFixed(1)}h${e.overtime?'<span style="color:var(--s-delay);font-size:7px;margin-left:2px">OT</span>':''}</div><div style="flex:1"><div style="font-weight:600;font-size:10px">${esc(e.task||'Work')}</div><div style="font-size:9px;color:var(--tx3)">${e.operator?esc(e.operator)+' · ':''}${fD(e.date)}${e.startTime?' '+e.startTime:''}${e.endTime?'→'+e.endTime:''} ${e.notes?'· '+esc(e.notes):''}</div></div><span class="te-del" onclick="if(confirm('Delete this entry?'))delTimeEntry('${j.id}',${i})" title="Delete">✕</span></div>`).join(''):'<div style="color:var(--tx3);font-size:10px;padding:8px;text-align:center">No time entries yet</div>';
+    const nowT=new Date().toTimeString().slice(0,5);const defStart=firstShiftStart(P.settings);
+    opModal(`<div class="md-h"><div class="md-t">⏱ Log Time: ${esc(j.partName||j.id)}</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+            <div class="kpi" style="padding:8px"><div class="kpi-l">Estimated</div><div class="kpi-v" style="font-size:16px">${(j.durationHours||0).toFixed(1)}h</div></div>
+            <div class="kpi" data-c="${varClass(j.durationHours||0,totalAct||undefined)}" style="padding:8px"><div class="kpi-l">Actual</div><div class="kpi-v" style="font-size:16px">${totalAct.toFixed(1)}h</div></div>
+            <div class="kpi" data-c="${totalAct?(totalAct-(j.durationHours||0))>0?'r':'g':''}" style="padding:8px"><div class="kpi-l">Variance</div><div class="kpi-v" style="font-size:16px">${totalAct?((totalAct-(j.durationHours||0))>0?'+':'')+(totalAct-(j.durationHours||0)).toFixed(1)+'h':'—'}</div></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:6px;letter-spacing:.8px">Add Time Entry</div>
+        <div class="fr3">
+            <div class="fg"><label>Date</label><input type="date" id="tl_date" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="fg"><label>Start Time</label><input type="time" id="tl_st" value="${defStart}" onchange="calcTLHrs()"></div>
+            <div class="fg"><label>End Time</label><input type="time" id="tl_et" value="${nowT}" onchange="calcTLHrs()"></div>
+        </div>
+        <div class="fr3">
+            <div class="fg"><label>Hours (auto or manual)</label><input type="number" id="tl_hrs" value="" step=".25" min=".25" max="24" placeholder="Auto from times"></div>
+            <div class="fg"><label>Operator</label><input type="text" id="tl_op" list="dlOp" placeholder="Name" value="${esc(lastOp)}"></div>
+            <div class="fg"><label>Task</label><input type="text" id="tl_task" list="dlTask" placeholder="Roughing, Setup..." value="Machining"></div>
+        </div>
+        <div class="fr">
+            <div class="fg"><label><input type="checkbox" id="tl_ot"> Overtime</label></div>
+            <div class="fg"><label>Notes</label><input type="text" id="tl_notes" placeholder="Optional"></div>
+        </div>
+        <button class="btn btn-a" onclick="saveTimeEntry('${j.id}')" style="width:100%;justify-content:center;margin-bottom:12px">＋ Add Entry</button>
+        <div class="log-complete-bar">
+            <label>Progress</label>
+            <input type="range" id="tl_pg" min="0" max="100" value="${j.progress||0}" oninput="document.getElementById('tl_pgv').textContent=this.value+'%'">
+            <span class="pg-val" id="tl_pgv">${j.progress||0}%</span>
+            <button class="btn" onclick="saveProgress('${j.id}')" style="font-size:9px;padding:4px 8px">Update</button>
+            <button class="btn btn-g" onclick="markComplete('${j.id}')" style="font-size:9px;padding:4px 8px">✓ Complete</button>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:6px;letter-spacing:.8px">Time Entries (${entries.length})</div>
+        <div style="max-height:200px;overflow-y:auto">${entriesHTML}</div>
+    </div><div class="md-f"><button class="btn" onclick="clModal()">Close</button></div>`);calcTLHrs()}function calcTLHrs(){const st=document.getElementById('tl_st')?.value,et=document.getElementById('tl_et')?.value;if(!st||!et)return;const[h1,m1]=st.split(':').map(Number),[h2,m2]=et.split(':').map(Number);let d=(h2*60+m2)-(h1*60+m1);if(d<=0)d+=1440;const hrs=Math.round(d/15)*0.25;const el=document.getElementById('tl_hrs');if(el&&!el.value)el.value=hrs.toFixed(2)}
+function saveTimeEntry(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;
+    let hrs=parseFloat(document.getElementById('tl_hrs').value);
+    const st=document.getElementById('tl_st')?.value||'',et=document.getElementById('tl_et')?.value||'';
+    if((!hrs||hrs<=0)&&st&&et){const[h1,m1]=st.split(':').map(Number),[h2,m2]=et.split(':').map(Number);let d=(h2*60+m2)-(h1*60+m1);if(d<=0)d+=1440;hrs=Math.round(d/15)*0.25}
+    if(!hrs||hrs<=0){toast('Enter valid hours or start/end times','error');return}
+    if(!j.timeEntries)j.timeEntries=[];
+    const entry={id:uid(),hours:hrs,date:document.getElementById('tl_date').value||new Date().toISOString().split('T')[0],startTime:st,endTime:et,operator:document.getElementById('tl_op').value.trim(),task:document.getElementById('tl_task').value.trim()||'Work',overtime:document.getElementById('tl_ot')?.checked||false,notes:document.getElementById('tl_notes').value.trim(),ts:Date.now()};
+    j.timeEntries.push(entry);j.updatedAt=Date.now();
+    // Auto-compute progress from actual/estimated
+    const totalAct2=j.timeEntries.reduce((s,e2)=>s+(e2.hours||0),0);
+    if(j.durationHours>0){j.progress=Math.min(100,Math.round(totalAct2/j.durationHours*100))}
+    if(j.machineId)addLog(j.machineId,'time_log',`${hrs.toFixed(1)}h${entry.overtime?' OT':''} on "${j.partName||j.id}" by ${entry.operator||'—'} (${entry.task})${st&&et?' '+st+'→'+et:''}`);
+    autoSave();openLogTimeModal(jid);
+    // Full refresh so Gantt, Jobs table, Dashboard all update with new actual hours
+    refreshAll();toast(`${hrs.toFixed(1)}h logged · ${j.progress}%`,'success')}
+function delTimeEntry(jid,idx){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j||!j.timeEntries)return;j.timeEntries.splice(idx,1);j.updatedAt=Date.now();
+    // Recompute progress after delete
+    if(j.durationHours>0){j.progress=Math.min(100,Math.round(jobActual(j)/j.durationHours*100))}
+    autoSave();openLogTimeModal(jid);refreshAll()}
+// Save progress from log modal slider
+function saveProgress(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;
+    j.progress=Math.min(100,Math.max(0,parseInt(document.getElementById('tl_pg')?.value)||0));
+    j.updatedAt=Date.now();autoSave();refreshAll();toast(`Progress → ${j.progress}%`,'success')}
+// Mark job complete from log modal — sets status, progress, recalculates end to actual
+function markComplete(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;
+    const act=jobActual(j);const oldSt=j.status;
+    j.status='complete';j.progress=100;j.updatedAt=Date.now();
+    // Recalculate endDate based on actual hours (so Gantt shows real finish)
+    if(act>0&&j.startDate){j.actualEndDate=calcEndDate(j.startDate,act)}
+    if(j.machineId&&oldSt!=='complete'){
+        addLog(j.machineId,'status_change',`"${j.partName||j.id}" → complete`);
+        addLog(j.machineId,'job_done',`Done: "${j.partName||j.id}" (Est ${fH(j.durationHours)}, Act ${fH(act)}, ${act<=j.durationHours?'Under':'Over'} by ${fH(Math.abs(act-j.durationHours))})`)}
+    autoSave();clModal();refreshAll();toast(`✓ ${j.partName||jid} complete · ${fH(act)} actual`,'success')}
+
+/* ═══════ INLINE QUICK-EDIT (dblclick on Gantt) ═══════ */
+function qeOpen(e,jid,pid){e.stopPropagation();if(pid&&pid!==G.activeProjectId)return;if(!P)return;
+    const j=P.jobs.find(x=>x.id===jid);if(!j)return;jTTout();
+    const act=jobActual(j);const mc=machines.find(m=>m.id===j.machineId);
+    const stO=['queued','setup','running','paused','complete','delayed'].map(s=>`<option value="${s}" ${j.status===s?'selected':''}>${s}</option>`).join('');
+    const qe=document.getElementById('qePopup');
+    qe.innerHTML=`<div class="qe-title"><span>${esc(j.partName||j.id)}</span><span style="cursor:pointer;color:var(--tx3)" onclick="qeClose()">✕</span></div>
+        <div class="qe-row"><label>Status</label><select id="qe_st" onchange="qeSave('${jid}')">${stO}</select></div>
+        <div class="qe-row"><label>Progress</label><input type="range" id="qe_pg" min="0" max="100" value="${j.progress||0}" oninput="document.getElementById('qe_pgv').textContent=this.value+'%'" onchange="qeSave('${jid}')" style="flex:1"><span id="qe_pgv" style="font-family:var(--mono);font-size:10px;min-width:30px">${j.progress||0}%</span></div>
+        <div style="font-size:9px;color:var(--tx3);margin-bottom:6px">Est: ${fH(j.durationHours)} · Act: ${act?fH(act):'—'}${mc?' · '+esc(mc.name):''}</div>
+        <div class="qe-acts"><button class="btn btn-t" onclick="qeClose();openLogTimeModal('${jid}')">⏱ Log</button><button class="btn" onclick="qeClose();openEditJobModal('${jid}')">✏ Edit</button><button class="btn btn-g" onclick="markComplete('${jid}');qeClose()">✓ Done</button><button class="btn" onclick="dupJobOffset('${jid}');qeClose()">📋+</button></div>`;
+    qe.classList.add('show');
+    requestAnimationFrame(()=>{const r=qe.getBoundingClientRect();let x=e.clientX-r.width/2,y=e.clientY+10;if(x+r.width>window.innerWidth-8)x=window.innerWidth-r.width-8;if(x<8)x=8;if(y+r.height>window.innerHeight-8)y=e.clientY-r.height-10;qe.style.left=x+'px';qe.style.top=y+'px'})}
+function qeClose(){document.getElementById('qePopup').classList.remove('show')}
+function qeSave(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;
+    const oldSt=j.status;j.status=document.getElementById('qe_st').value;j.progress=parseInt(document.getElementById('qe_pg').value)||0;
+    if(j.status==='complete')j.progress=100;j.updatedAt=Date.now();
+    if(oldSt!==j.status&&j.machineId){addLog(j.machineId,'status_change',`"${j.partName||j.id}" → ${j.status}`);if(j.status==='complete')addLog(j.machineId,'job_done',`Done: "${j.partName||j.id}" (Est ${fH(j.durationHours)}, Act ${fH(jobActual(j))})`)}
+    autoSave();rGantt();rJobs?.()}
+document.addEventListener('click',e=>{if(!e.target.closest('.qe-popup')&&!e.target.closest('.g-job'))qeClose()});
+
+/* ═══════ CONFLICT RESOLUTION ═══════ */
+function resolveConflicts(){if(!P)return;const jobs=P.jobs.filter(j=>j.machineId&&j.startDate&&j.endDate&&j.status!=='complete');
+    // Group by machine
+    const byM={};jobs.forEach(j=>{if(!byM[j.machineId])byM[j.machineId]=[];byM[j.machineId].push(j)});
+    let fixed=0;
+    Object.values(byM).forEach(mJobs=>{mJobs.sort((a,b)=>new Date(a.startDate)-new Date(b.startDate));
+        for(let i=1;i<mJobs.length;i++){const prev=mJobs[i-1],cur=mJobs[i];
+            const pe=new Date(prev.endDate).getTime(),cs=new Date(cur.startDate).getTime();
+            if(cs<pe){// Conflict! Push current job after previous ends
+                cur.startDate=prev.endDate;cur.endDate=calcEndDate(cur.startDate,cur.durationHours||8);cur.updatedAt=Date.now();fixed++;
+                addLog(cur.machineId,'setup_change',`"${cur.partName||cur.id}" auto-shifted to avoid conflict`)}}});
+    if(fixed){autoSave();refreshAll();toast(`Resolved ${fixed} conflict${fixed>1?'s':''}`,'success')}else{toast('No conflicts to resolve','info')}}
+
+/* ═══════ DRAG GHOST PREVIEW ═══════ */
+function jDS(e,id){dragJID=id;const r=e.target.closest('.g-job').getBoundingClientRect();dragOX=e.clientX-r.left;e.dataTransfer.effectAllowed='move';e.target.closest('.g-job').classList.add('dragging');
+    const j=P?.jobs.find(jj=>jj.id===id);const gh=document.getElementById('dragGhost');
+    if(gh&&j){gh.textContent=`${j.partName||id} · ${fH(j.durationHours)}`;gh.style.display='block'}
+    document.addEventListener('dragover',dragGhostMove)}
+function dragGhostMove(e){const gh=document.getElementById('dragGhost');if(gh){gh.style.left=(e.clientX+12)+'px';gh.style.top=(e.clientY-20)+'px';
+    // Compute drop date preview
+    const tl=document.getElementById('gTL');const wrap=tl?.getBoundingClientRect();
+    if(wrap&&gSD&&e.clientX>wrap.left){const scrollX=tl.scrollLeft;const xInTl=e.clientX-wrap.left+scrollX-dragOX;const dayOff=Math.round(xInTl/gDW);const dropD=new Date(gSD);dropD.setDate(dropD.getDate()+dayOff);
+        gh.textContent=(P?.jobs.find(jj=>jj.id===dragJID)?.partName||dragJID)+' → '+fD(dropD)}}}
+function jDE(e){e.target.classList.remove('dragging');document.getElementById('dragGhost').style.display='none';document.removeEventListener('dragover',dragGhostMove)}
+
+/* ═══════ QUICK DUPLICATE + OFFSET ═══════ */
+function dupJobOffset(id){if(!P)return;const j=P.jobs.find(x=>x.id===id);if(!j)return;
+    const nj={...JSON.parse(JSON.stringify(j)),id:`JOB-${String(nJID).padStart(3,'0')}`,partName:(j.partName||'')+' (Run 2)',progress:0,status:'queued',timeEntries:[],createdAt:Date.now(),updatedAt:Date.now()};
+    // Offset: start after original's end date
+    if(j.endDate){nj.startDate=j.endDate;nj.endDate=calcEndDate(nj.startDate,nj.durationHours||8)}
+    P.jobs.push(nj);nJID++;autoSave();refreshAll();toast(`Duplicated "${j.partName}" → starts ${fDT(nj.startDate)}`,'success')}
+
+/* ═══════ 7-DAY CAPACITY HEATMAP ═══════ */
+function rCapHeatmap(){if(!P)return;const el=document.getElementById('dCap');if(!el)return;
+    const td=new Date();td.setHours(0,0,0,0);const days=[];
+    for(let i=0;i<7;i++){const d=new Date(td);d.setDate(d.getDate()+i);days.push(d)}
+    const allJ=gViewAll?projects.flatMap(p=>p.jobs):P.jobs;const netH=dailyH(P.settings);
+    let html='<div class="cap-grid"><div class="cap-cell"></div>';
+    days.forEach(d=>{const wd=d.toLocaleDateString('en-GB',{weekday:'short'});const dd=d.getDate();html+=`<div class="cap-cell hdr">${wd}<br>${dd}</div>`});html+='';
+    machines.forEach(m=>{html+=`<div class="cap-cell mname" title="${esc(m.name)}">${esc(m.name)}</div>`;
+        days.forEach(d=>{const dayS=d.getTime(),dayE=dayS+864e5;
+            const dayNet=isWD(d)?dailyH(P.settings,d):0;
+            if(!dayNet){html+=`<div class="cap-cell off">—</div>`;return}
+            // Sum hours of jobs that overlap this day on this machine
+            let loadH=0;allJ.filter(j=>j.machineId===m.id&&j.startDate&&j.endDate&&j.status!=='complete').forEach(j=>{
+                const js=new Date(j.startDate).getTime(),je=new Date(j.endDate).getTime();
+                if(js<dayE&&je>dayS){const overlap=Math.min(je,dayE)-Math.max(js,dayS);loadH+=Math.min(dayNet,(overlap/36e5))}});
+            const pct=Math.round(loadH/dayNet*100);const cls=pct>90?'hi':pct>50?'med':pct>0?'lo':'off';
+            html+=`<div class="cap-cell ${cls}" title="${m.name}: ${loadH.toFixed(1)}h / ${dayNet.toFixed(1)}h (${pct}%)">${pct}%</div>`})});
+    html+='</div>';el.innerHTML=html}
+
+/* Settings */
+function openSettingsModal(){if(!P)return;const s=P.settings;const net=dailyH(s);
+    opModal(`<div class="md-h"><div class="md-t">⚙ Project Settings</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b">
+        <div class="fg"><label>Project Name</label><input id="ms_pn" value="${esc(P.name)}"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--acc);text-transform:uppercase;margin:10px 0 6px;letter-spacing:.8px">Shift 1 (Primary)</div>
+        <div class="fr3"><div class="fg"><label>Start</label><input type="time" id="ms_s1s" value="${s.shift1Start||'08:00'}"></div><div class="fg"><label>End</label><input type="time" id="ms_s1e" value="${s.shift1End||'17:00'}"></div><div class="fg"><label>Break (h)</label><input type="number" id="ms_brk" value="${s.breakPerShift??1}" min="0" max="3" step=".25"></div></div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 6px;letter-spacing:.8px">Shift 2 (Optional)</div>
+        <div class="fr3"><div class="fg"><label>Start</label><input type="time" id="ms_s2s" value="${s.shift2Start||''}"><div class="hint">Leave empty = single shift</div></div><div class="fg"><label>End</label><input type="time" id="ms_s2e" value="${s.shift2End||''}"></div><div class="fg"><label>Overlap (h)</label><input type="number" id="ms_olap" value="${s.shiftOverlap??1}" min="0" max="3" step=".5"><div class="hint">Handover between shifts</div></div></div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 6px;letter-spacing:.8px">🌙 Ramadan Mode</div>
+        <div class="fr3"><div class="fg"><label><input type="checkbox" id="ms_ram" ${s.ramadanMode?'checked':''}> Enable</label><div class="hint">Overrides shifts above</div></div><div class="fg"><label>Start</label><input type="time" id="ms_rs" value="${s.ramStart||'09:00'}"></div><div class="fg"><label>End</label><input type="time" id="ms_re" value="${s.ramEnd||'15:00'}"></div></div>
+        <div class="fg"><label>Ramadan Break (h)</label><input type="number" id="ms_rb" value="${s.ramBreak??0.5}" min="0" max="2" step=".25" style="width:80px"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 6px;letter-spacing:.8px">Maintenance &amp; Cleanup</div>
+        <div class="fr3"><div class="fg"><label>Daily PM (h)</label><input type="number" id="ms_dpm" value="${s.dailyPM??0.5}" min="0" max="4" step=".25"><div class="hint">Cleanup + daily check</div></div><div class="fg"><label>Weekly PM (h)</label><input type="number" id="ms_wpm" value="${s.weeklyPM??2}" min="0" max="8" step=".5"></div><div class="fg"><label>Weekly PM Day</label><select id="ms_wpd">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<option value="${i}" ${(s.weeklyPMDay??6)===i?'selected':''}>${d}</option>`).join('')}</select></div></div>
+        <div class="fg"><label>Monthly PM (h)</label><input type="number" id="ms_mpm" value="${s.monthlyPM??4}" min="0" max="16" step="1" style="width:80px"><div class="hint">Deducted on 1st of month</div></div>
+        <div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 6px;letter-spacing:.8px">Schedule</div>
+        <div class="fr"><div class="fg"><label>Hourly Rate</label><input type="number" id="ms_rate" value="${s.hourlyRate||0}" min="0" step="5"><div class="hint">0 = hidden</div></div><div class="fg"><label>Net Machine Hours/Day</label><input value="${net.toFixed(1)}h" readonly style="opacity:.6;font-weight:700;color:var(--acc)"><div class="hint">After breaks, PM, overlap</div></div></div>
+        <div class="fg"><label>Working Days</label><div style="display:flex;gap:5px;flex-wrap:wrap">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<label style="display:flex;align-items:center;gap:3px;font-size:10px;cursor:pointer;padding:3px 7px;background:var(--bg2);border-radius:var(--r);border:1px solid var(--brd)"><input type="checkbox" id="ms_wd${i}" ${(s.workingDays||[]).includes(i)?'checked':''}>${d}</label>`).join('')}</div></div>
+    </div><div class="md-f"><button class="btn btn-d" onclick="clModal();resetAllData()" title="Delete ALL data and start fresh" style="font-size:9px">🗑 Reset All Data</button><div style="flex:1"></div><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveSettings()">Save</button></div>`)}
+function saveSettings(){if(!P)return;P.name=document.getElementById('ms_pn').value.trim()||'CNC Project';
+    const s=P.settings;
+    s.shift1Start=document.getElementById('ms_s1s').value||'08:00';s.shift1End=document.getElementById('ms_s1e').value||'17:00';
+    s.shift2Start=document.getElementById('ms_s2s').value||'';s.shift2End=document.getElementById('ms_s2e').value||'';
+    s.breakPerShift=parseFloat(document.getElementById('ms_brk').value)||0;s.shiftOverlap=parseFloat(document.getElementById('ms_olap').value)||0;
+    s.ramadanMode=document.getElementById('ms_ram').checked;s.ramStart=document.getElementById('ms_rs').value||'09:00';s.ramEnd=document.getElementById('ms_re').value||'15:00';s.ramBreak=parseFloat(document.getElementById('ms_rb').value)||0;
+    s.dailyPM=parseFloat(document.getElementById('ms_dpm').value)||0;s.weeklyPM=parseFloat(document.getElementById('ms_wpm').value)||0;s.weeklyPMDay=parseInt(document.getElementById('ms_wpd').value)||6;s.monthlyPM=parseFloat(document.getElementById('ms_mpm').value)||0;
+    s.hourlyRate=parseFloat(document.getElementById('ms_rate').value)||0;
+    const wd=[];for(let i=0;i<7;i++)if(document.getElementById(`ms_wd${i}`).checked)wd.push(i);s.workingDays=wd.length?wd:[1,2,3,4,5,6];
+    clModal();autoSave();refreshAll();toast('Saved · Net '+dailyH(s).toFixed(1)+'h/day','success')}
+
+/* Job modals */
+function openNewJobModal(){if(!P)return;const mo='<option value="">— Unassigned —</option>'+machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('');const defStart=new Date();defStart.setMinutes(0,0,0);const dtVal=toLocalDT(defStart);
+    opModal(`<div class="md-h"><div class="md-t">New Job</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b"><div class="fr"><div class="fg"><label>Job ID</label><input id="mj_id" value="JOB-${String(nJID).padStart(3,'0')}" required></div><div class="fg"><label>Part Name</label><input id="mj_nm" placeholder="e.g. Hydraulic Manifold" required></div></div><div class="fr3"><div class="fg"><label>Machine</label><select id="mj_mc">${mo}</select></div><div class="fg"><label>Priority</label><select id="mj_pr"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div><div class="fg"><label>Status</label><select id="mj_st"><option value="queued">Queued</option><option value="setup">Setup</option><option value="running">Running</option></select></div></div><div class="fr"><div class="fg"><label>Material</label><input id="mj_mt" list="dlMat" placeholder="Type or select..."></div><div class="fg"><label>Qty</label><input type="number" id="mj_qt" value="1" min="1"></div></div><div class="fr3"><div class="fg"><label>Est Duration (h)</label><input type="number" id="mj_du" value="8" step=".5" min=".5" required></div><div class="fg"><label>Start Date/Time</label><input type="datetime-local" id="mj_sd" value="${dtVal}"></div><div class="fg"><label>Safety</label><select id="mj_sf"><option value="1">1.0x</option><option value="1.1">1.1x</option><option value="1.2">1.2x</option><option value="1.35" selected>1.35x</option><option value="1.5">1.5x</option><option value="2">2.0x</option></select></div></div>
+        <div class="fr"><div class="fg"><label><input type="checkbox" id="mj_ot"> Overtime (runs beyond shift)</label></div><div class="fg"><label><input type="checkbox" id="mj_sup"> Needs operator supervision</label></div></div>
+        <div class="fg"><label>Notes</label><textarea id="mj_no" rows="2"></textarea></div></div><div class="md-f"><span class="kbd">Ctrl+N</span><div style="flex:1"></div><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveNewJob()">Create Job</button></div>`);setTimeout(()=>document.getElementById('mj_nm')?.focus(),80)}
+function saveNewJob(){if(!P)return;const id=document.getElementById('mj_id').value.trim()||`JOB-${String(nJID).padStart(3,'0')}`;if(P.jobs.some(j=>j.id===id)){toast('Duplicate ID','error');return}const dur=parseFloat(document.getElementById('mj_du').value)||8,sf=parseFloat(document.getElementById('mj_sf').value)||1.35,adj=dur*sf;const sv=document.getElementById('mj_sd').value,sd=sv?new Date(sv).toISOString():null;
+    P.jobs.push({id,partName:document.getElementById('mj_nm').value.trim(),machineId:document.getElementById('mj_mc').value||null,status:document.getElementById('mj_st').value||'queued',priority:document.getElementById('mj_pr').value||'medium',material:document.getElementById('mj_mt').value.trim(),quantity:Math.max(1,parseInt(document.getElementById('mj_qt').value)||1),durationHours:adj,rawDurationHours:dur,safetyFactor:sf,startDate:sd,endDate:sd?calcEndDate(sd,adj):null,progress:0,overtime:document.getElementById('mj_ot').checked,supervision:document.getElementById('mj_sup').checked,notes:document.getElementById('mj_no').value.trim(),timeEntries:[],createdAt:Date.now(),updatedAt:Date.now()});nJID++;clModal();autoSave();refreshAll();toast('Job created','success')}
+function openEditJobModal(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;const mo='<option value="" '+(j.machineId?'':'selected')+'>— Unassigned —</option>'+machines.map(m=>`<option value="${m.id}" ${m.id===j.machineId?'selected':''}>${esc(m.name)}</option>`).join('');const sfO=[1,1.1,1.2,1.35,1.5,2].map(v=>`<option value="${v}" ${j.safetyFactor==v?'selected':''}>${v}x</option>`).join('');const stO=['queued','setup','running','paused','complete','delayed'].map(s=>`<option value="${s}" ${j.status===s?'selected':''}>${s}</option>`).join('');const prO=['low','medium','high'].map(p=>`<option value="${p}" ${j.priority===p?'selected':''}>${p}</option>`).join('');const act=jobActual(j);const dtVal=toLocalDT(j.startDate);
+    opModal(`<div class="md-h"><div class="md-t">Edit: ${esc(j.id)}</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px"><div class="kpi" style="padding:8px"><div class="kpi-l">Estimated</div><div class="kpi-v" style="font-size:15px">${(j.durationHours||0).toFixed(1)}h</div></div><div class="kpi" style="padding:8px" data-c="${varClass(j.durationHours||0,act||undefined)}"><div class="kpi-l">Actual</div><div class="kpi-v" style="font-size:15px">${act?act.toFixed(1)+'h':'—'}</div></div><div class="kpi" style="padding:8px"><div class="kpi-l">Entries</div><div class="kpi-v" style="font-size:15px">${(j.timeEntries||[]).length}</div><div class="kpi-s"><a style="color:var(--acc);cursor:pointer;font-size:9px" onclick="clModal();setTimeout(()=>openLogTimeModal('${j.id}'),100)">⏱ Log Time</a></div></div></div>
+        <div class="fr"><div class="fg"><label>Job ID</label><input id="mj_id" value="${esc(j.id)}"></div><div class="fg"><label>Part Name</label><input id="mj_nm" value="${esc(j.partName||'')}" required></div></div><div class="fr3"><div class="fg"><label>Machine</label><select id="mj_mc">${mo}</select></div><div class="fg"><label>Priority</label><select id="mj_pr">${prO}</select></div><div class="fg"><label>Status</label><select id="mj_st">${stO}</select></div></div><div class="fr"><div class="fg"><label>Material</label><input id="mj_mt" list="dlMat" value="${esc(j.material||'')}"></div><div class="fg"><label>Qty</label><input type="number" id="mj_qt" value="${j.quantity||1}" min="1"></div></div><div class="fr3"><div class="fg"><label>Est Duration (h)</label><input type="number" id="mj_du" value="${j.rawDurationHours||j.durationHours||8}" step=".5" min=".5"></div><div class="fg"><label>Start Date/Time</label><input type="datetime-local" id="mj_sd" value="${dtVal}"></div><div class="fg"><label>Safety</label><select id="mj_sf">${sfO}</select></div></div>
+        <div class="fr"><div class="fg"><label><input type="checkbox" id="mj_ot" ${j.overtime?'checked':''}> Overtime (beyond shift)</label></div><div class="fg"><label><input type="checkbox" id="mj_sup" ${j.supervision?'checked':''}> Needs operator supervision</label></div></div>
+        <div class="fr"><div class="fg"><label>Progress (%)</label><input type="number" id="mj_pg" value="${j.progress||0}" min="0" max="100"></div><div class="fg"><label>End</label><input value="${fDT(j.endDate)}" readonly style="opacity:.5"></div></div><div class="fg"><label>Notes</label><textarea id="mj_no" rows="2">${esc(j.notes||'')}</textarea></div></div><div class="md-f"><button class="btn btn-d" onclick="delJob('${j.id}');clModal()">Delete</button><div style="flex:1"></div><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveEditJob('${j.id}')">Save Changes</button></div>`)}
+
+function saveEditJob(jid){if(!P)return;const j=P.jobs.find(x=>x.id===jid);if(!j)return;const dur=parseFloat(document.getElementById('mj_du').value)||8,sf=parseFloat(document.getElementById('mj_sf').value)||1.35,adj=dur*sf;const sv=document.getElementById('mj_sd').value,sd=sv?new Date(sv).toISOString():null;const nid=document.getElementById('mj_id').value.trim()||j.id;if(nid!==j.id&&P.jobs.some(x=>x.id===nid)){toast('Dup ID','error');return}const oldSt=j.status,newSt=document.getElementById('mj_st').value;j.id=nid;j.partName=document.getElementById('mj_nm').value.trim();j.machineId=document.getElementById('mj_mc').value||null;j.priority=document.getElementById('mj_pr').value;j.status=newSt;j.material=document.getElementById('mj_mt').value.trim();j.quantity=Math.max(1,parseInt(document.getElementById('mj_qt').value)||1);j.rawDurationHours=dur;j.safetyFactor=sf;j.durationHours=adj;j.startDate=sd;j.endDate=sd?calcEndDate(sd,adj):null;j.progress=Math.min(100,Math.max(0,parseInt(document.getElementById('mj_pg').value)||0));j.overtime=document.getElementById('mj_ot').checked;j.supervision=document.getElementById('mj_sup').checked;j.notes=document.getElementById('mj_no').value.trim();j.updatedAt=Date.now();if(oldSt!==newSt&&j.machineId){addLog(j.machineId,'status_change',`"${j.partName||j.id}" → ${newSt}`);if(newSt==='complete')addLog(j.machineId,'job_done',`Done: "${j.partName||j.id}" (Est ${fH(j.durationHours)}, Act ${fH(jobActual(j))})`)}clModal();autoSave();refreshAll();toast('Updated','success')}
+function delJob(id){if(!P||!confirm('Delete?'))return;P.jobs=P.jobs.filter(j=>j.id!==id);autoSave();refreshAll();toast('Deleted','warning')}
+function dupJob(id){if(!P)return;const j=P.jobs.find(x=>x.id===id);if(!j)return;P.jobs.push({...JSON.parse(JSON.stringify(j)),id:`JOB-${String(nJID).padStart(3,'0')}`,partName:(j.partName||'')+' (Copy)',progress:0,timeEntries:[],createdAt:Date.now(),updatedAt:Date.now()});nJID++;autoSave();refreshAll();toast('Duplicated','success')}
+function setJS(id,st){if(!P)return;const j=P.jobs.find(x=>x.id===id);if(!j)return;const old=j.status;j.status=st;j.updatedAt=Date.now();if(st==='complete')j.progress=100;if(j.machineId&&old!==st){addLog(j.machineId,'status_change',`"${j.partName||j.id}" → ${st}`);if(st==='complete')addLog(j.machineId,'job_done',`Done: "${j.partName||j.id}" (Est ${fH(j.durationHours)}, Act ${fH(jobActual(j))})`)}autoSave();refreshAll()}
+// Quick status cycle: queued→setup→running→complete (click badge in table)
+const STATUS_CYCLE=['queued','setup','running','paused','complete','delayed'];
+function cycleStatus(id){if(!P)return;const j=P.jobs.find(x=>x.id===id);if(!j)return;const ci=STATUS_CYCLE.indexOf(j.status);const ns=STATUS_CYCLE[(ci+1)%STATUS_CYCLE.length];setJS(id,ns);toast(`${j.partName||id} → ${ns}`,'info')}
+// Populate operator datalist from all time entries across projects
+function updateOpDL(){const ops=new Set();projects.forEach(p=>(p.jobs||[]).forEach(j=>(j.timeEntries||[]).forEach(e=>{if(e.operator)ops.add(e.operator)})));const dl=document.getElementById('dlOp');if(dl)dl.innerHTML=[...ops].sort().map(o=>`<option value="${esc(o)}">`).join('')}
+// Update net hours badge in topbar
+function updateNetBadge(){const el=document.getElementById('tpNet');if(!el||!P)return;const net=dailyH(P.settings);el.textContent=net.toFixed(1)+'h/day';el.title=`Net productive hours: ${net.toFixed(1)}h (after breaks, PM, overlap)${P.settings.ramadanMode?' — Ramadan mode':''}`}
+
+/* Machine modals */
+function openNewMachineModal(){opModal(`<div class="md-h"><div class="md-t">Add Machine</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b"><div class="fr"><div class="fg"><label>Name</label><input id="mm_nm" placeholder="DMG Mori DMU-50"></div><div class="fg"><label>Type</label><select id="mm_tp"><option>3-Axis Mill</option><option>5-Axis Mill</option><option>CNC Lathe</option><option>Router</option><option>EDM</option><option>Grinding</option><option>Other</option></select></div></div><div class="fg"><label>Status</label><select id="mm_st"><option value="online">Online</option><option value="offline">Offline</option><option value="maintenance">Maintenance</option></select></div><div class="fg"><label>Notes</label><textarea id="mm_no" rows="2"></textarea></div></div><div class="md-f"><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveNewMach()">Add</button></div>`);setTimeout(()=>document.getElementById('mm_nm')?.focus(),80)}
+function saveNewMach(){const n=document.getElementById('mm_nm').value.trim();if(!n){toast('Name needed','error');return}machines.push({id:`MCH-${String(nMID).padStart(3,'0')}`,name:n,type:document.getElementById('mm_tp').value,status:document.getElementById('mm_st').value,notes:document.getElementById('mm_no').value.trim(),createdAt:Date.now()});nMID++;addLog(machines[machines.length-1].id,'note',`Machine "${n}" added`);clModal();autoSave();refreshAll();toast(`"${n}" added`,'success')}
+function openEditMachineModal(mid){const m=machines.find(x=>x.id===mid);if(!m)return;const ts=['3-Axis Mill','5-Axis Mill','CNC Lathe','Router','EDM','Grinding','Other'];opModal(`<div class="md-h"><div class="md-t">Edit: ${esc(m.name)}</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b"><div class="fr"><div class="fg"><label>Name</label><input id="mm_nm" value="${esc(m.name)}"></div><div class="fg"><label>Type</label><select id="mm_tp">${ts.map(t=>`<option ${t===m.type?'selected':''}>${t}</option>`).join('')}</select></div></div><div class="fg"><label>Status</label><select id="mm_st"><option value="online" ${m.status==='online'?'selected':''}>Online</option><option value="offline" ${m.status==='offline'?'selected':''}>Offline</option><option value="maintenance" ${m.status==='maintenance'?'selected':''}>Maintenance</option></select></div><div class="fg"><label>Notes</label><textarea id="mm_no" rows="2">${esc(m.notes||'')}</textarea></div></div><div class="md-f"><button class="btn btn-d" onclick="delMach('${m.id}');clModal()">Delete</button><div style="flex:1"></div><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveEditMach('${m.id}')">Save</button></div>`)}
+function saveEditMach(mid){const m=machines.find(x=>x.id===mid);if(!m)return;const oldSt=m.status;m.name=document.getElementById('mm_nm').value.trim()||m.name;m.type=document.getElementById('mm_tp').value;m.status=document.getElementById('mm_st').value;m.notes=document.getElementById('mm_no').value.trim();if(oldSt!==m.status)addLog(m.id,'status_change',`Status → ${m.status} (was ${oldSt})`);clModal();autoSave();refreshAll();toast('Updated','success')}
+function delMach(mid){if(!confirm('Delete machine?'))return;machines=machines.filter(m=>m.id!==mid);deletedMachineIds.add(mid);projects.forEach(p=>p.jobs.forEach(j=>{if(j.machineId===mid)j.machineId=null}));autoSave();refreshAll();toast('Deleted','warning')}
+function openMachineDetailModal(mid){const m=machines.find(x=>x.id===mid);if(!m)return;const allJ=projects.flatMap(p=>p.jobs.map(j=>({...j,projName:p.name})));const mj=allJ.filter(j=>j.machineId===mid);const tE=mj.reduce((s,j)=>s+(j.durationHours||0),0),tA=mj.reduce((s,j)=>s+jobActual(j),0);const logs=mLogs.filter(l=>l.machineId===mid).slice(0,40);
+    opModal(`<div class="md-h"><div class="md-t">📊 ${esc(m.name)}</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b"><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px"><div class="kpi" style="padding:8px"><div class="kpi-l">Status</div><div class="kpi-v" style="font-size:14px;color:${m.status==='online'?'var(--s-done)':m.status==='maintenance'?'var(--s-delay)':'var(--tx3)'}">${m.status}</div></div><div class="kpi" style="padding:8px"><div class="kpi-l">Est</div><div class="kpi-v" style="font-size:14px">${tE.toFixed(1)}h</div></div><div class="kpi" style="padding:8px"><div class="kpi-l">Actual</div><div class="kpi-v" style="font-size:14px">${tA.toFixed(1)}h</div></div><div class="kpi" style="padding:8px" data-c="${varClass(tE,tA||undefined)}"><div class="kpi-l">Variance</div><div class="kpi-v" style="font-size:14px">${tA?((tA-tE)>0?'+':'')+(tA-tE).toFixed(1)+'h':'—'}</div></div></div>
+        <div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">Jobs (${mj.length})</div><div style="max-height:130px;overflow-y:auto;margin-bottom:12px">${mj.length?mj.slice(0,25).map(j=>{const a=jobActual(j);return`<div class="rj-row" style="font-size:10px"><span class="sd ${j.status}"></span><div style="flex:1;font-weight:600">${esc(j.partName||j.id)}</div><div style="font-family:var(--mono);font-size:8px;color:var(--tx3)">${fH(j.durationHours)}e</div><div style="font-family:var(--mono);font-size:8px;color:var(--tx)">${a?fH(a)+'a':'—'}</div><span class="sb ${j.status}">${j.status}</span></div>`}).join(''):'<div style="color:var(--tx3);font-size:10px;padding:6px">None</div>'}</div>
+        <div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">Log (${logs.length})</div><div style="max-height:160px;overflow-y:auto">${logs.length?logs.map(l=>`<div class="log-entry" style="padding:4px 0"><span class="log-type ${l.type}" style="font-size:7px;padding:1px 5px">${l.type.replace(/_/g,' ')}</span><div class="log-body"><div class="log-desc" style="font-size:10px">${esc(l.desc)}</div><div class="log-meta">${new Date(l.ts).toLocaleString('en-GB')}</div></div></div>`).join(''):'<div style="color:var(--tx3);font-size:10px;padding:6px">No logs</div>'}</div></div><div class="md-f"><button class="btn" onclick="openEditMachineModal('${mid}')">Edit</button><button class="btn btn-a" onclick="clModal()">Close</button></div>`)}
+function openNewLogModal(){const mo=machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('');opModal(`<div class="md-h"><div class="md-t">📋 New Log</div><button class="md-x" onclick="clModal()">✕</button></div><div class="md-b"><div class="fr"><div class="fg"><label>Machine</label><select id="ml_mc">${mo||'<option value="">None</option>'}</select></div><div class="fg"><label>Type</label><select id="ml_tp"><option value="maintenance">Maintenance</option><option value="breakdown">Breakdown</option><option value="note" selected>Note</option><option value="setup_change">Setup Change</option></select></div></div><div class="fg"><label>Description</label><textarea id="ml_desc" rows="3"></textarea></div></div><div class="md-f"><button class="btn" onclick="clModal()">Cancel</button><button class="btn btn-a" onclick="saveNewLog()">Add</button></div>`)}
+function saveNewLog(){const mid=document.getElementById('ml_mc').value;if(!mid){toast('Select machine','error');return}const desc=document.getElementById('ml_desc').value.trim();if(!desc){toast('Description needed','error');return}addLog(mid,document.getElementById('ml_tp').value,desc);clModal();refreshAll();toast('Added','success')}
+
+/* ═══════ IMPORT / EXPORT ═══════ */
+function exportProject(){if(!P)return;const d={version:'7.0',type:'project',exportedAt:new Date().toISOString(),project:JSON.parse(JSON.stringify(P)),machines:JSON.parse(JSON.stringify(machines)),machineLogs:mLogs.filter(l=>l.projectId===P.id||machines.some(m=>m.id===l.machineId))};const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`${(P.name||'CNC').replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(a.href);toast('Exported','success')}
+function exportAllBackup(){const d={version:'7.0',type:'full_backup',exportedAt:new Date().toISOString(),projects:JSON.parse(JSON.stringify(projects)),machines:JSON.parse(JSON.stringify(machines)),machineLogs:JSON.parse(JSON.stringify(mLogs)),activeProjectId:G.activeProjectId};const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`CNC_Full_Backup_${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(a.href);toast(`Full backup exported`,'success')}
+function importProject(){document.getElementById('fIn').click()}
+function handleImport(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);
+    if(d.type==='full_backup'){if(!confirm(`Restore full backup? (${d.projects?.length||0} projects)`))return;projects=d.projects||[];machines=d.machines||[];mLogs=(d.machineLogs||[]).sort((a,b)=>(b.ts||0)-(a.ts||0));dirtyLogIds=new Set(mLogs.map(l=>l.id));G.activeProjectId=d.activeProjectId||null;P=projects.find(p=>p.id===G.activeProjectId)||projects[0]||null;if(P)G.activeProjectId=P.id;
+    }else if((d.version?.startsWith('5')||d.version?.startsWith('6')||d.version?.startsWith('7'))&&d.project){d.machines?.forEach(im=>{if(!machines.find(m=>m.id===im.id))machines.push(im)});(d.machineLogs||[]).forEach(il=>{if(!mLogs.find(l=>l.id===il.id)){mLogs.push(il);dirtyLogIds.add(il.id)}});mLogs.sort((a,b)=>(b.ts||0)-(a.ts||0));const np=d.project;np.id=uid();projects.push(np);P=np;G.activeProjectId=np.id;
+    }else if(d.parts&&!d.jobs){toast('Converting v3.x...','info');convertV3(d)
+    }else if(d.jobs){const np=defaultProject(d.projectName||'Imported');np.jobs=d.jobs||[];np.settings={...np.settings,...(d.settings||{})};projects.push(np);(d.machines||[]).forEach(im=>{if(!machines.find(m=>m.id===im.id))machines.push(im)});P=np;G.activeProjectId=np.id}
+    // Migrate: ensure timeEntries exists
+    projects.forEach(p=>(p.jobs||[]).forEach(j=>{if(!j.timeEntries)j.timeEntries=[]}));
+    if(P)recalcJID(P);recalcMID();autoSave();refreshAll();toast(`Loaded "${P?.name}"`,'success')}catch(er){console.error(er);toast('Invalid file','error')}ev.target.value=''};r.readAsText(f)}
+function convertV3(d){const np=defaultProject(d.projectInfo?.projectName||'Imported v3');np.settings.hourlyRate=parseFloat(d.projectInfo?.hourlyRate)||0;
+    const hps=parseFloat(d.schedule?.hoursPerShift)||8,st=d.schedule?.startTime||'08:00',nsh=parseInt(d.schedule?.shiftsPerDay)||1;
+    const[stH,stM]=st.split(':').map(Number);const endM=stH*60+stM+hps*60;
+    np.settings.shift1Start=st;np.settings.shift1End=String(Math.floor(endM/60)).padStart(2,'0')+':'+String(endM%60).padStart(2,'0');
+    if(nsh>=2){const s2s=Math.max(0,endM-60);np.settings.shift2Start=String(Math.floor(s2s/60)).padStart(2,'0')+':'+String(s2s%60).padStart(2,'0');const s2e=s2s+hps*60;np.settings.shift2End=String(Math.floor(s2e/60)%24).padStart(2,'0')+':'+String(s2e%60).padStart(2,'0')}
+    const w=parseInt(d.schedule?.workingDaysPerWeek)||6;np.settings.workingDays=w===7?[0,1,2,3,4,5,6]:w===5?[1,2,3,4,5]:[1,2,3,4,5,6];
+    const ms=new Set();(d.parts||[]).forEach(p=>(p.setups||[]).forEach(s=>{if(s.machine)ms.add(s.machine)}));[...ms].forEach(n=>{if(!machines.find(m=>m.name===n))machines.push({id:`MCH-${String(nMID++).padStart(3,'0')}`,name:n,type:'CNC',status:'online',createdAt:Date.now()})});if(!machines.length)machines.push({id:`MCH-${String(nMID++).padStart(3,'0')}`,name:'Default Machine',type:'CNC',status:'online',createdAt:Date.now()});let jid=1;(d.parts||[]).forEach(p=>{let tH=(parseFloat(p.cam)||0)+(parseFloat(p.planning)||0)+(parseFloat(p.matprep)||0),sH=0,mn='';(p.setups||[]).forEach(s=>{sH+=(parseFloat(s.fixture)||0)+(parseFloat(s.tools)||0)+(parseFloat(s.proveout)||0)+((parseFloat(s.roughing)||0)+(parseFloat(s.finishing)||0))/60*(parseFloat(s.safety)||1.35)*(parseInt(p.quantity)||1);if(s.machine)mn=s.machine});const mc=machines.find(m=>m.name===mn)||machines[0];const sd=d.schedule?.startDate?new Date(d.schedule.startDate+'T'+st+':00').toISOString():null;np.jobs.push({id:`JOB-${String(jid++).padStart(3,'0')}`,partName:p.name||'Unnamed',machineId:mc.id,status:'queued',priority:'medium',material:p.material||'',quantity:parseInt(p.quantity)||1,durationHours:tH+sH,rawDurationHours:tH+sH,safetyFactor:1,startDate:sd,endDate:null,progress:0,notes:p.notes||'',timeEntries:[],createdAt:Date.now(),updatedAt:Date.now()})});projects.push(np);P=np;G.activeProjectId=np.id}
+function exportCSV(){if(!P)return;const safe=v=>{const s=String(v??'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s};let c='Job ID,Part,Machine,Status,Priority,Material,Qty,Est Duration (h),Safety,Actual Hours,Variance (h),Start,End,Progress,Time Entries,Notes\n';P.jobs.forEach(j=>{const mc=machines.find(m=>m.id===j.machineId),act=jobActual(j),v=act?(act-(j.durationHours||0)).toFixed(2):'';c+=[safe(j.id),safe(j.partName),safe(mc?.name||''),safe(j.status),safe(j.priority),safe(j.material),j.quantity||1,(j.durationHours||0).toFixed(2),j.safetyFactor||1,act?act.toFixed(2):'',v,safe(j.startDate?j.startDate.split('T')[0]:''),safe(j.endDate?j.endDate.split('T')[0]:''),j.progress||0,(j.timeEntries||[]).length,safe(j.notes)].join(',')+'\n'});const b=new Blob([c],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`${(P.name||'CNC').replace(/\s+/g,'_')}_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(a.href);toast('CSV exported','success')}
+
+/* ═══════ PRINT — Est vs Actual report ═══════ */
+function printReport(){if(!P)return;const td=new Date().toLocaleDateString('en-GB',{year:'numeric',month:'long',day:'numeric'}),rate=P.settings.hourlyRate||0;const totE=P.jobs.reduce((s,j)=>s+(j.durationHours||0),0),totA=P.jobs.reduce((s,j)=>s+jobActual(j),0),totV=totA-totE;const aj=projects.flatMap(p=>p.jobs);
+    let h=`<h1>${esc(P.name)}</h1><p style="color:#666;margin-bottom:12px">CNC Production Report — ${td} — v7.0</p>`;
+    const shifts=getShifts(P.settings);const netH=dailyH(P.settings);
+    h+=`<h2>Shift Config${P.settings.ramadanMode?' (Ramadan Mode)':''}</h2><table><tr><th>Shift</th><th>Start</th><th>End</th><th>Gross</th><th>Break</th></tr>`;
+    shifts.forEach((sh,i)=>{h+=`<tr><td>${P.settings.ramadanMode?'Ramadan':'Shift '+(i+1)}</td><td>${sh.start}</td><td>${sh.end}</td><td>${shiftGrossH(sh).toFixed(1)}h</td><td>${(sh.brk||0)}h</td></tr>`});
+    h+=`</table><table><tr><td>Overlap</td><td>${P.settings.shiftOverlap||0}h</td><td>Daily PM</td><td>${P.settings.dailyPM||0}h</td><td>Weekly PM</td><td>${P.settings.weeklyPM||0}h</td><td><b>Net/day</b></td><td><b>${netH.toFixed(1)}h</b></td></tr></table>`;
+    h+=`<h2>Jobs — Estimated vs Actual</h2><table><tr><th>ID</th><th>Part</th><th>Machine</th><th>Material</th><th>Qty</th><th>Status</th><th>Est (h)</th><th>Actual (h)</th><th>Variance</th><th>Entries</th><th>%</th></tr>`;
+    P.jobs.forEach(j=>{const mc=machines.find(m=>m.id===j.machineId),act=jobActual(j),v=act?act-(j.durationHours||0):null;h+=`<tr><td>${esc(j.id)}</td><td>${esc(j.partName||'-')}</td><td>${esc(mc?.name||'-')}</td><td>${esc(j.material||'-')}</td><td>${j.quantity||1}</td><td>${j.status}</td><td>${(j.durationHours||0).toFixed(1)}</td><td>${act?act.toFixed(1):'-'}</td><td class="${v!==null?(v>0.5?'over':v<-0.5?'under':''):''}">${v!==null?(v>0?'+':'')+v.toFixed(1):'-'}</td><td>${(j.timeEntries||[]).length}</td><td>${j.progress||0}%</td></tr>`});
+    h+=`<tr style="font-weight:700;background:#f0f0f0"><td colspan="6">TOTALS</td><td>${totE.toFixed(1)}</td><td>${totA?totA.toFixed(1):'-'}</td><td class="${totA?(totV>0.5?'over':totV<-0.5?'under':''):''}">${totA?(totV>0?'+':'')+totV.toFixed(1):'-'}</td><td>${P.jobs.reduce((s,j)=>s+(j.timeEntries||[]).length,0)}</td><td></td></tr></table>`;
+    if(rate){h+=`<h2>Cost Analysis</h2><table><tr><th>Metric</th><th>Value</th></tr><tr><td>Estimated Cost</td><td>${(totE*rate).toFixed(2)} (${totE.toFixed(1)}h × ${rate})</td></tr><tr><td>Actual Cost</td><td>${totA?(totA*rate).toFixed(2):'-'}</td></tr><tr><td>Cost Variance</td><td class="${totA?(totV>0.5?'over':totV<-0.5?'under':''):''}">${totA?(totV>0?'+':'')+((totV)*rate).toFixed(2):'-'}</td></tr></table>`}
+    h+=`<h2>Machines (${machines.length})</h2><table><tr><th>Name</th><th>Type</th><th>Status</th><th>Est (h)</th><th>Actual (h)</th><th>Variance</th></tr>`;
+    machines.forEach(m=>{const mE=aj.filter(j=>j.machineId===m.id).reduce((s,j)=>s+(j.durationHours||0),0),mA=aj.filter(j=>j.machineId===m.id).reduce((s,j)=>s+jobActual(j),0),mV=mA?mA-mE:null;h+=`<tr><td>${esc(m.name)}</td><td>${esc(m.type||'-')}</td><td>${m.status}</td><td>${mE.toFixed(1)}</td><td>${mA?mA.toFixed(1):'-'}</td><td class="${mV!==null?(mV>0.5?'over':mV<-0.5?'under':''):''}">${mV!==null?(mV>0?'+':'')+mV.toFixed(1):'-'}</td></tr>`});
+    h+=`</table>`;
+    const recentLogs=mLogs.slice(0,10);if(recentLogs.length){h+=`<h2>Recent Log</h2><table><tr><th>Time</th><th>Machine</th><th>Type</th><th>Description</th></tr>`;recentLogs.forEach(l=>{const m=machines.find(x=>x.id===l.machineId);h+=`<tr><td style="font-size:7pt">${new Date(l.ts).toLocaleString('en-GB')}</td><td>${esc(m?.name||'?')}</td><td>${l.type.replace(/_/g,' ')}</td><td>${esc(l.desc)}</td></tr>`});h+=`</table>`}
+    h+=`<div class="foot">${esc(P.name)} — ${td} — CNC Scheduler v7.0</div>`;document.getElementById('printView').innerHTML=h;setTimeout(()=>window.print(),200)}
+
+/* ═══════ REFRESH ═══════ */
+function refreshAll(){renderProjDD();syncGanttViewBtns();updateOpDL();updateNetBadge();const at=document.querySelector('.tab.active')?.dataset?.tab||'dashboard';({dashboard:rDash,gantt:rGantt,jobs:rJobs,machines:rMach,log:rLog})[at]?.();document.getElementById('bG').textContent=P?.jobs.length||0;document.getElementById('bJ').textContent=P?.jobs.length||0;document.getElementById('bM').textContent=machines.length;document.getElementById('bL').textContent=mLogs.length}
+function updateClock(){document.getElementById('tpTime').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'})+' '+new Date().toTimeString().slice(0,5)}
+
+/* ═══════ SEED ═══════ */
+function seedDemo(){const m1=`MCH-${String(nMID++).padStart(3,'0')}`,m2=`MCH-${String(nMID++).padStart(3,'0')}`,m3=`MCH-${String(nMID++).padStart(3,'0')}`,m4=`MCH-${String(nMID++).padStart(3,'0')}`;
+machines=[{id:m1,name:'DMG Mori DMU-50',type:'5-Axis Mill',status:'online',notes:'',createdAt:Date.now()},{id:m2,name:'Haas VF-2',type:'3-Axis Mill',status:'online',notes:'',createdAt:Date.now()},{id:m3,name:'Mazak QT-250',type:'CNC Lathe',status:'online',notes:'',createdAt:Date.now()},{id:m4,name:'Biesse Rover',type:'Router',status:'online',notes:'Composites',createdAt:Date.now()}];const mids=[m1,m2,m3,m4];
+const td=new Date();td.setHours(8,0,0,0);const nm=['Manifold Block','Turbine Blade','Composite Mold','Bracket Assembly','Shaft Coupling','Impeller'];const mt=['Al6061','Inconel 718','MDF Tooling','SS316L','Titanium','Al7075'];const du=[16,32,24,8,12,40];const st=['complete','running','queued','setup','queued','running'];
+const p1=defaultProject('Enata — Hull Assembly');p1.jobs=nm.map((n,i)=>{const d=new Date(td);d.setDate(d.getDate()+Math.floor(i*1.5)-3);const te=[];
+    // Seed some actual time entries for completed/running jobs
+    if(st[i]==='complete'){const actH=du[i]*(0.85+Math.random()*0.3);const ds=d.toISOString().split('T')[0];te.push({id:uid(),hours:Math.round(actH*0.6*100)/100,date:ds,startTime:'08:00',endTime:'13:00',operator:'Ahmad',task:'Roughing',overtime:false,notes:'',ts:Date.now()-86400000},{id:uid(),hours:Math.round(actH*0.4*100)/100,date:ds,startTime:'13:30',endTime:'16:30',operator:'Nadeem',task:'Finishing',overtime:false,notes:'',ts:Date.now()})}
+    if(st[i]==='running'){te.push({id:uid(),hours:Math.round(du[i]*0.4*100)/100,date:d.toISOString().split('T')[0],startTime:'08:00',endTime:'12:00',operator:'Harold',task:'Roughing',overtime:false,notes:'In progress',ts:Date.now()})}
+    return{id:`JOB-${String(i+1).padStart(3,'0')}`,partName:n,machineId:mids[i%4],status:st[i],priority:i<2?'high':i<4?'medium':'low',material:mt[i],quantity:i<3?1:Math.ceil(Math.random()*5),durationHours:du[i],rawDurationHours:du[i],safetyFactor:1.35,startDate:d.toISOString(),endDate:calcEndDate(d.toISOString(),du[i]),progress:st[i]==='complete'?100:st[i]==='running'?Math.floor(Math.random()*60+20):0,overtime:false,supervision:i===1,notes:'',timeEntries:te,createdAt:Date.now(),updatedAt:Date.now()}});
+projects=[p1];P=p1;G.activeProjectId=p1.id;nJID=nm.length+1;
+// Second demo project
+const p2=defaultProject('Client — Prototype Brackets');
+const td2=new Date();td2.setHours(10,0,0,0);td2.setDate(td2.getDate()+1);
+p2.jobs=[{id:'JOB-001',partName:'Mounting Bracket A',machineId:m2,status:'running',priority:'high',material:'SS316L',quantity:4,durationHours:12,rawDurationHours:12,safetyFactor:1.35,startDate:td2.toISOString(),endDate:calcEndDate(td2.toISOString(),12),progress:35,overtime:false,supervision:true,notes:'±0.02 tolerance',timeEntries:[{id:uid(),hours:4.25,date:td2.toISOString().split('T')[0],startTime:'10:00',endTime:'14:15',operator:'Rajan',task:'Setup + Roughing',overtime:false,notes:'',ts:Date.now()}],createdAt:Date.now(),updatedAt:Date.now()},{id:'JOB-002',partName:'Gusset Plate',machineId:m1,status:'queued',priority:'medium',material:'Al7075',quantity:8,durationHours:6,rawDurationHours:6,safetyFactor:1.2,startDate:null,endDate:null,progress:0,overtime:false,supervision:false,notes:'',timeEntries:[],createdAt:Date.now(),updatedAt:Date.now()}];
+projects.push(p2);
+addLog(m1,'maintenance','Spindle bearing inspection — OK');addLog(m3,'note','New tool holders installed');addLog(m2,'status_change','Status → online (was maintenance)');autoSave()}
+
+async function init(){await oDB();await loadAll();if(!projects.length&&!machines.length)seedDemo();if(P)syncZoomButtons();syncGanttViewBtns();refreshAll();updateClock();setInterval(updateClock,30000)}
+// Full data reset — clears IndexedDB completely
+async function resetAllData(){if(!confirm('⚠ DELETE ALL DATA?\n\nThis will permanently remove all projects, jobs, machines, and logs.\n\nAre you sure?'))return;if(!confirm('This cannot be undone. Type YES to confirm.'))return;try{db.close();await new Promise((ok,no)=>{const r=indexedDB.deleteDatabase(DB);r.onsuccess=ok;r.onerror=no});location.reload()}catch(e){console.error(e);toast('Reset failed','error')}}
+init();
+</script>
+</body>
+</html>
